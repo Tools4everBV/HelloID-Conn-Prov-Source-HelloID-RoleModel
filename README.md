@@ -8,6 +8,11 @@ The API is very powerful, therefore the API key and secret must be kept private 
 
 <!-- Description -->
 ## Description
+These Powershell scripts generate overviews to support building a role model
+
+<!-- TABLE OF CONTENTS -->
+## Table of Contents
+- [HelloID-Conn-Prov-Source-HelloID-RoleModel](#helloid-conn-prov-source-helloid-rolemodel)
   - [Version](#version)
   - [Description](#description)
   - [Table of Contents](#table-of-contents)
