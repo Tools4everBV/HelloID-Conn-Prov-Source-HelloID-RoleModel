@@ -83,8 +83,8 @@ The PowerShell scripts “Get-HelloIDRoleModel.ps1” and "Get-HelloIDPersonGrou
 | $evaluationSystemName         | The name of the system on which to check the permissions in the evaluation (Only required when using the evaluation report) | Microsoft Active Directory |
 | $grantedEntitlementsCsv       | The location of the Granted Entitlements Csv (needs to be manually exported from a HelloID Provisioning Granted Entitlements) (Only required when you want to check the groups against a granted entitlements report) | C:\HelloID\Provisioning\RoleMining_export\PersonGroupMembers\Entitlements_export\Entitlements.csv |
 | $entitlementsSystemName       | The name of the system on which to check the permissions in the evaluation (Only required when using the entitlements report) | Microsoft Active Directory |
-| $personCorrelationAttribute   | Exchange Room Malbox Domain suffix                                      | ExternalId                      |
-| $userCorrelationAttribute     | Exchange Room Malbox Domain suffix                                      | employeeId                      |
+| $personCorrelationAttribute   | The person attribute used to correlate a person to an account           | ExternalId                      |
+| $userCorrelationAttribute     | The user attribute used to correlate a person to an account             | employeeId                      |
 
 
 # HelloID Docs
