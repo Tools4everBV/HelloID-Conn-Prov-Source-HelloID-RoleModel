@@ -14,27 +14,28 @@ These Powershell scripts generate overviews to support building a role model
 ## Table of Contents
 - [HelloID-Conn-Prov-Source-HelloID-RoleModel](#helloid-conn-prov-source-helloid-rolemodel)
   - [Version](#version)
+  - [Warning:](#warning)
   - [Description](#description)
   - [Table of Contents](#table-of-contents)
   - [User information](#user-information)
     - [Get-HelloIDRoleModel](#get-helloidrolemodel)
     - [Get-HelloIDPersonGroupMembers](#get-helloidpersongroupmembers)
-  - [Script outcome ](#script-outcome)
+  - [Script outcome](#script-outcome)
   - [PowerShell setup script](#powershell-setup-script)
   - [Update connection and configuration details](#update-connection-and-configuration-details)
     - [details Get-HelloIDRoleModel](#details-get-helloidrolemodel)
-    - [details Get-HelloIDPersonGroupMembers](#details-get-helloidpersongroupmembers)
+    - [Details Get-HelloIDPersonGroupMembers](#details-get-helloidpersongroupmembers)
 - [HelloID Docs](#helloid-docs)
 
 ## User information
 With the local CSV export, you can make a report that gives insight into the current situation in the Active Directory. The exported data can be input for the business rules yet
 to be created. 
+
 ### Get-HelloIDRoleModel
-This script is used by small organizations. This overview offers insight into memberships by department or function. This overview doesn’t give roles across departments of
-functions. 
+This script is used by small organizations. This overview offers insight into memberships by department or function. This overview doesn’t give roles across departments of functions. 
+
 ### Get-HelloIDPersonGroupMembers
-This script is used by middle to big organizations. This overview offers insight into the memberships of the employees of the organizations. If the CSV export is turned into a
-pivot table, several reports can be made.
+This script is used by middle to big organizations. This overview offers insight into the memberships of the employees of the organizations. If the CSV export is turned into a pivot table, several reports can be made.
 
 
 ## Script outcome
@@ -58,30 +59,32 @@ The PowerShell scripts “Get-HelloIDRoleModel.ps1” and "Get-HelloIDPersonGrou
 
 ## Update connection and configuration details
 ### details Get-HelloIDRoleModel
-<table>
-  <tr><td><strong>Variable name</strong></td><td><strong>Example value</strong></td><td><strong>Description</strong></td></tr>
-  <tr><td>$script:PortalBaseUrl</td><td>https://customer01.helloid.com</td><td>Your HelloID portal's URL</td></tr>
-  <tr><td>$apiKey</td><td>*****</td><td>API Key value of your own environment</td></tr>
-  <tr><td>$apiSecret</td><td>*****</td><td>API secret value of your own environment</td></tr>
-  <tr><td>$source</td><td>enyoi.local</td><td>Filter the accounts and groups in the HelloID directory based on a single filter</td></tr>
-  <tr><td>$exportPath</td><td>C:\HelloID\Provisioning\RoleMining_export\HelloIDRoleModel\</td><td>Make sure the exportPath contains a trailing \ in Windows or / in Unix/MacOS environments</td></tr>
-  <tr><td>$relevanceThreshold</td><td>70</td><td>Determines when a permission is relevant enough to be included in the report.</td></tr>
-  <tr><td>$roleOccupantsThreshold</td><td>1</td><td>A role is only included if the number of occupants/acounts meets the threshold.</td></tr>
-  <tr><td>$maxRoles</td><td>50</td><td>Output the report for a max $ of roles</td></tr>
-</table>
+| Variable name                 | Description                                                             | Example value                   |
+| ----------------------------- | ----------------------------------------------------------------------- | ------------------------------- |
+| $script:PortalBaseUrl         | Your HelloID portal's URL                                               | https://customer01.helloid.com  |
+| $apiKey                       | API Key value of your HelloID environment                               | ********                        |
+| $apiSecret                    | API secret value of your HelloID environment                            | ********                        |
+| $source                       | The name of the source in HelloID to filter the accounts and groups on  | enyoi.local                     |
+| $exportPath                   | The path where the csv file will be exported (Make sure the exportPath contains a trailing \ in Windows or / in Unix/MacOS environments)  | C:\HelloID\Provisioning\RoleMining_export\HelloIDRoleModel\  |
+| $relevanceThreshold           | Determines when a permission is relevant enough to be included in the report  | 70                        |
+| $roleOccupantsThreshold       | A role is only included if the number of occupants/acounts meets the threshold  | 1                       |
+| $maxRoles                     | Output the report for a max $ of roles                                  | 50                              |
 
 ### Details Get-HelloIDPersonGroupMembers
-<table>
-  <tr><td><strong>Variable name</strong></td><td><strong>Example value</strong></td><td><strong>Description</strong></td></tr>
-  <tr><td>$script:PortalBaseUrl</td><td>https://customer01.helloid.com</td><td>Your HelloID portal's URL</td></tr>
-  <tr><td>$apiKey</td><td>*****</td><td>API Key value of your own environment</td></tr>
-  <tr><td>$apiSecret</td><td>*****</td><td>API secret value of your own environment</td></tr>
-  <tr><td>$source</td><td>enyoi.local</td><td>Filter the accounts and groups in the HelloID directory based on a single filter</td></tr>
-  <tr><td>$exportPath</td><td>C:\HelloID\Provisioning\RoleMining_export\HelloIDRoleModel\</td><td>Make sure the exportPath contains a trailing \ in Windows or / in Unix/MacOS environments</td></tr>
-  <tr><td>$json</td><td>C:\HelloID\Provisioning\RoleMining_export\JSON_file_export\vault.json</td><td>The location of the Vault export in JSON format (needs to be manually exported from a HelloID Provisioning snapshot).</td></tr>
-  <tr><td>$personCorrelationAttribute</td><td>ExternalId</td><td>The attribute used to correlate a person to an account</td></tr>
-  <tr><td>$userCorrelationAttribute</td><td>employeeId</td><td>The attribute used to correlate a person to an account</td></tr>
-</table>
+| Variable name                 | Description                                                             | Example value                   |
+| ----------------------------- | ----------------------------------------------------------------------- | ------------------------------- |
+| $script:PortalBaseUrl         | Your HelloID portal's URL                                               | https://customer01.helloid.com  |
+| $apiKey                       | API Key value of your HelloID environment                               | ********                        |
+| $apiSecret                    | API secret value of your HelloID environment                            | ********                        |
+| $source                       | The name of the source in HelloID to filter the accounts and groups on  | enyoi.local                     |
+| $exportPath                   | The path where the csv file will be exported (Make sure the exportPath contains a trailing \ in Windows or / in Unix/MacOS environments)   | C:\HelloID\Provisioning\RoleMining_export\PersonGroupMembers\  |
+| $vaultJson                    | The path to the Vault export in JSON format (needs to be manually exported from a HelloID Provisioning snapshot). | C:\HelloID\Provisioning\RoleMining_export\PersonGroupMembers\JSON_file_export\vault.json |
+| $evaluationReportCsv          | The location of the Evaluation Report Csv (needs to be manually exported from a HelloID Provisioning evaluation) (Only required when you want to check the groups against an evaluation report).  | C:\HelloID\Provisioning\RoleMining_export\PersonGroupMembers\Evaluation_Summary_export\EvaluationReport.csv |
+| $evaluationSystemName         | The name of the system on which to check the permissions in the evaluation (Only required when using the evaluation report) | Microsoft Active Directory |
+| $grantedEntitlementsCsv       | The location of the Granted Entitlements Csv (needs to be manually exported from a HelloID Provisioning Granted Entitlements) (Only required when you want to check the groups against a granted entitlements report) | C:\HelloID\Provisioning\RoleMining_export\PersonGroupMembers\Entitlements_export\Entitlements.csv |
+| $entitlementsSystemName       | The name of the system on which to check the permissions in the evaluation (Only required when using the entitlements report) | Microsoft Active Directory |
+| $personCorrelationAttribute   | Exchange Room Malbox Domain suffix                                      | ExternalId                      |
+| $userCorrelationAttribute     | Exchange Room Malbox Domain suffix                                      | employeeId                      |
 
 
 # HelloID Docs

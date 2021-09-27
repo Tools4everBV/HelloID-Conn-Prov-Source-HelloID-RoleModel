@@ -4,10 +4,15 @@
 .DESCRIPTION
 
 .NOTES
+    Author: Arnout van der Vorst
+    Editor: Ramon Schouten
     Last Edit: 2021-07-07
     Version 1.0 - initial release
     Version 1.0.1 - Minor updates
+    Version 1.1.0 - Added enhancements for checks on evaluation report export and granted entitlements export
 #>
+# Specify whether to output the verbose logging
+$verboseLogging = $false
 
 # Specify the tenant urlapi key, secret
 $tenantUri = "https://CUSTOMER.helloid.com"
@@ -17,8 +22,22 @@ $apiSecret = "API_SECRET"
 $source = "enyoi.local"
 # Make sure the exportPath contains a trailing \ in Windows or / in Unix/MacOS environments
 $exportPath = "C:\HelloID\Provisioning\RoleMining_export\PersonGroupMembers\"
+
 # The location of the Vault export in JSON format (needs to be manually exported from a HelloID Provisioning snapshot).
-$json = "C:\HelloID\Provisioning\RoleMining_export\JSON_file_export\vault.json"
+$vaultJson = "C:\HelloID\Provisioning\RoleMining_export\PersonGroupMembers\JSON_file_export\vault.json"
+
+# Optionally, specifiy the parameters below when you want to check the groups against an evaluation report
+# The location of the Evaluation Report Csv (needs to be manually exported from a HelloID Provisioning evaluation).
+$evaluationReportCsv = "C:\HelloID\Provisioning\RoleMining_export\PersonGroupMembers\Evaluation_Summary_export\EvaluationReport.csv"
+# The name of the system on which to check the permissions in the evaluation (Required when using the evaluation report)
+$evaluationSystemName = "Microsoft Active Directory"
+
+# Optionally, specifiy the parameters below when you want to check the groups against a granted entitlements report
+# The location of the Granted Entitlements Csv (needs to be manually exported from a HelloID Provisioning Granted Entitlements).
+$grantedEntitlementsCsv = "C:\HelloID\Provisioning\RoleMining_export\PersonGroupMembers\Entitlements_export\Entitlements.csv"
+# The name of the system on which to check the permissions in the evaluation (Required when using the entitlements report)
+$entitlementsSystemName = "Microsoft Active Directory"
+
 # The attribute used to correlate a person to an account
 $personCorrelationAttribute = "ExternalId"
 $userCorrelationAttribute = "employeeId"
@@ -34,10 +53,8 @@ $base64 = [System.Convert]::ToBase64String($bytes)
 $basicAuthValue = "Basic $base64"
 $headers = @{ Authorization = $basicAuthValue }
 
-# Make sure we use at least TLS 1.2
-if ([Net.ServicePointManager]::SecurityProtocol -notmatch "Tls12") {
-    [Net.ServicePointManager]::SecurityProtocol += [Net.SecurityProtocolType]::Tls12
-}
+# Set TLS to accept TLS, TLS 1.1 and TLS 1.2
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls12
 
 Function Get-StringHash([String] $String, $HashName = "MD5") {
     $StringBuilder = New-Object System.Text.StringBuilder
@@ -63,7 +80,7 @@ function Get-RESTAPIPagedData {
 
         $uri = $BaseUri + "?skip=$skip&take=$take"
         $dataset = Invoke-RestMethod -Method Get -Uri $uri -Headers $Headers -UseBasicParsing
-        Write-Verbose -Verbose "Getting data from $uri"
+        Write-Verbose -Verbose:$verboseLogging "Getting data from $uri"
 
         foreach ($record in $dataset) { [void]$data.Value.add($record) }
 
@@ -71,7 +88,7 @@ function Get-RESTAPIPagedData {
         while ($dataset.Count -eq $take){
             $uri = $BaseUri + "?skip=$skip&take=$take"
 
-            Write-Verbose -Verbose "Getting data from $uri"
+            Write-Verbose -Verbose:$verboseLogging "Getting data from $uri"
             $dataset = Invoke-RestMethod -Method Get -Uri $uri -Headers $Headers -UseBasicParsing
             Start-Sleep -Milliseconds 50
 
@@ -82,7 +99,7 @@ function Get-RESTAPIPagedData {
     }
     catch {
         $data.Value = $null
-        Write-Verbose $_.Exception
+        Write-Error $_.Exception
     }
 }
 
@@ -94,14 +111,14 @@ function Get-HelloIDGroupsWithMembers {
     )
 
     try {
-        Write-Verbose -Verbose "Retrieving group memberships for each HelloID group..."
+        Write-Information "Retrieving group memberships for each HelloID group..." -InformationAction Continue
 
         $UsersGrouped = $Users | Group-Object userGuid -AsHashTable
 
         # Retrieve the membership of groups, requires fetch per group
         foreach ($group in $Groups) {
             $uriGroup = $uriGroups + "/" + $group.groupGuid
-            Write-Verbose -Verbose "Getting group from $uriGroup"
+            Write-Verbose -Verbose:$verboseLogging "Getting group from $uriGroup"
             $groupAugmented = Invoke-RestMethod -Method Get -Uri $uriGroup -Headers $headers -UseBasicParsing
             $groupAugmented = $groupAugmented | Select-Object groupGuid, name, users
 
@@ -122,7 +139,7 @@ function Get-HelloIDGroupsWithMembers {
     }
     catch {
         $groupsWithMembers.Value = $null
-        Write-Verbose -Verbose $_.Exception
+        Write-Error $_.Exception
     }
 }
 
@@ -133,7 +150,7 @@ function Invoke-TransformMembershipsToMemberOf {
     )
 
     try {
-        Write-Verbose -Verbose "Transforming group memberships to users with memberOf..."
+        Write-Information "Transforming group memberships to users with memberOf..." -InformationAction Continue
 
         foreach ($record in $GroupsWithMembers) {
             foreach ($userGuid in $record.users) {
@@ -148,7 +165,7 @@ function Invoke-TransformMembershipsToMemberOf {
     }
     catch {
         $usersWithMemberOf.Value = $null
-        Write-Verbose -Verbose $_.Exception
+        Write-Error $_.Exception
     }
 }
 
@@ -159,7 +176,7 @@ function Expand-Persons {
     )
 
     try {
-        Write-Verbose -Verbose "Expanding persons with contracts..."
+        Write-Information "Expanding persons with contracts..." -InformationAction Continue
 
         foreach ($person in $persons) {
             if ($null -eq $person.PrimaryContract.EndDate) {
@@ -210,71 +227,14 @@ function Expand-Persons {
         }
     }
     catch {
-        Write-Verbose -Verbose $_.Exception
+        Write-Error $_.Exception
     }
 }
 
-
-function Export-Data {
-    param(
-        [parameter(Mandatory = $true)]$Data,
-        [parameter(Mandatory = $true)]$FilePath
-    )
-
-    try {
-        Write-Verbose -Verbose "Exporting data to CSV..."
-
-        $header = "externalId;displayName;departmentId;departmentCode;departmentDescription;titleId;titleCode;titleDescription;contractActive;contractIsPrimary;userName;isEnabled;permission;"
-
-        $export = New-Object System.Collections.ArrayList
-        foreach ($record in $PersonPermissions) {
-            $line = $record.externalId + ";"
-            $line += $record.displayName + ";"
-            $line += $record.departmentId + ";"
-            $line += $record.departmentCode + ";"
-            $line += $record.departmentDescription + ";"
-            $line += $record.titleId + ";"
-            $line += $record.titleCode + ";"
-            $line += $record.titleDescription + ";"
-
-            if ($record.startDate -le (Get-Date) -and ($record.endDate -ge (Get-Date) -or $null -eq $record.endDate)) {
-                $line += "TRUE" + ";"
-            }
-            else {
-                $line += "FALSE" + ";"
-            }
-
-            if ($record.contractIsPrimary -eq $true) {
-                $line += "TRUE" + ";"
-            }
-            else {
-                $line += "FALSE" + ";"
-            }
-
-            $line += $record.userName + ";"
-
-            if ($record.isEnabled -eq $True) {
-                $line += "TRUE" + ";"
-            }
-            else {
-                $line += "FALSE" + ";"
-            }
-
-            $line += $record.permission + ";"
-
-            [void]$export.add($line)
-        }
-
-        $header | Out-File -FilePath $FilePath
-        $export | Out-File -FilePath $FilePath -Append
-    }
-    catch {
-        Write-Verbose -Verbose $_.Exception
-    }
-}
 
 # Retrieve all persons
-$snapshot = Get-Content -Path $json | ConvertFrom-Json
+Write-Information "Gathering persons..." -InformationAction Continue
+$snapshot = Get-Content -Path $vaultJson -Encoding UTF8 | ConvertFrom-Json
 $persons = $snapshot.Persons
 
 # Expand persons with contracts
@@ -282,6 +242,7 @@ $expandedPersons = New-Object System.Collections.ArrayList
 Expand-Persons -Persons $snapshot.Persons ([ref]$ExpandedPersons)
 
 # Retrieve all users
+Write-Information "Gathering users..." -InformationAction Continue
 $users = New-Object System.Collections.ArrayList
 Get-RESTAPIPagedData -BaseUri $uriUsers -Headers $headers ([ref]$users)
 $users = $users | Where-Object { $_.source -eq $source }
@@ -292,6 +253,7 @@ Export-Clixml -Path "$($exportPath)users.xml" -InputObject $users
 $usersGrouped = $users | Group-Object $userCorrelationAttribute -AsHashTable
 
 # Retrieve all groups
+Write-Information "Gathering groups..." -InformationAction Continue
 $groups = New-Object System.Collections.ArrayList
 Get-RESTAPIPagedData -BaseUri $uriGroups -Headers $headers ([ref]$groups)
 $groups = $groups | Where-Object { $_.source -eq $source }
@@ -314,6 +276,50 @@ $usersWithMemberOf = $usersWithMemberOf | Group-Object "userGuid" -AsHashTable
 
 $personPermissions = New-Object System.Collections.ArrayList
 
+# Retrieve evalution
+if(-not[string]::IsNullOrEmpty($evaluationReportCsv)){
+    Write-Information "Gathering data from evaluation report export..." -InformationAction Continue
+    $evaluationReport = Import-Csv -Path $evaluationReportCsv -Delimiter "," -Encoding UTF8
+    $evaluationPermissions = $evaluationReport | Where-Object {$_.System -eq $evaluationSystemName -and $_.Type -eq "Permission" -and $_.Operation -eq "Grant"}
+
+    # Add GroupName to evaluation since we need to match to the correct groups
+    $evaluationPermissions | Add-Member -MemberType NoteProperty -Name "GroupName" -Value $null -Force
+    $evaluationPermissions | ForEach-Object {
+        $groupPathMatch = $_.EntitlementName -match '\((.*?)\)'
+        if(-not[string]::IsNullOrEmpty($matches)){
+            $groupPath = $matches[1] # second index, because the first matches value includes ()
+            $groupName = ($groupPath -split '/')[-1]
+            $_.GroupName = $groupName
+        }
+    }
+
+    # Transform Evaluation Report into persons with entitlements
+    $evaluatedPersonsWithEntitlement = $null
+    $evaluatedPersonsWithEntitlement = $evaluationPermissions | Group-Object "Person" -AsHashTable
+}
+
+# Retrieve entitlements
+if(-not[string]::IsNullOrEmpty($grantedEntitlementsCsv)){
+    Write-Information "Gathering data from granted entitlements export..." -InformationAction Continue
+    $entitlementsReport = Import-Csv -Path $grantedEntitlementsCsv -Delimiter "," -Encoding UTF8
+    $entitlementsGranted = $entitlementsReport | Where-Object {$_.System -eq $entitlementsSystemName -and $_.Status -eq "Granted" }
+
+    # Add GroupName to evaluation since we need to match to the correct groups
+    $entitlementsGranted | Add-Member -MemberType NoteProperty -Name "GroupName" -Value $null -Force
+    $entitlementsGranted | ForEach-Object {
+        $groupPathMatch = $_.EntitlementName -match '\((.*?)\)'
+        if(-not[string]::IsNullOrEmpty($matches)){
+            $groupPath = $matches[1] # second index, because the first matches value includes ()
+            $groupName = ($groupPath -split '/')[-1]
+            $_.GroupName = $groupName
+        }
+    }
+
+    # Transform Evaluation Report into persons with entitlements
+    $personsWithGrantedEntitlements = $null
+    $personsWithGrantedEntitlements = $entitlementsGranted | Group-Object "Person" -AsHashTable
+}
+
 foreach ($person in $expandedPersons) {
     $user = $usersGrouped[$person.externalId]
 
@@ -323,29 +329,53 @@ foreach ($person in $expandedPersons) {
 
     if ($null -eq $permissions) { continue; }
 
+    # Get evaluated entitlements for person
+    if($null -ne $evaluatedPersonsWithEntitlement){ $evaluatedEntitlements = $evaluatedPersonsWithEntitlement[$person.DisplayName] }
+
+    # Get granted entitlements for person
+    if($null -ne $personsWithGrantedEntitlements){ $grantedEntitlements = $personsWithGrantedEntitlements[$person.DisplayName] }
+
     foreach ($permission in $permissions) {
         $group = $groupsGrouped[$permission.memberOf]
 
         if ($null -eq $group) { continue; }
+        
+        # Check if group is in evaluation
+        if($group.name -in $evaluatedEntitlements.GroupName){
+            $inEvaluation = $true
+        }else{
+            $inEvaluation = $false
+        }
+
+        # Check if group is in granted entitlements
+        if($group.name -in $grantedEntitlements.GroupName){
+            $isGranted = $true
+        }else{
+            $isGranted = $false
+        }
 
         $record = [PSCustomObject]@{
-            externalId            = $person.externalId
-            displayName           = $person.displayName
-            departmentId          = $person.departmentId
-            departmentCode        = $person.departmentCode
-            departmentDescription = $person.departmentDescription
-            titleId               = $person.titleId
-            titleCode             = $person.titleCode
-            titleDescription      = $person.titleDescription
-            contractIsPrimary     = $person.contractIsPrimary
-            startDate             = $person.startDate
-            endDate               = $person.endDate
-            userName              = $user.userName
-            isEnabled             = $user.isEnabled
-            permission            = $group.name
+            externalId              = $person.externalId
+            displayName             = $person.displayName
+            departmentId            = $person.departmentId
+            departmentCode          = $person.departmentCode
+            departmentDescription   = $person.departmentDescription
+            titleId                 = $person.titleId
+            titleCode               = $person.titleCode
+            titleDescription        = $person.titleDescription
+            contractIsPrimary       = $person.contractIsPrimary
+            startDate               = $person.startDate
+            endDate                 = $person.endDate
+            userName                = $user.userName
+            isEnabled               = $user.isEnabled
+            permission              = $group.name
+            inEvaluation            = $inEvaluation
+            isGranted               = $isGranted
         }
+
         [void]$personPermissions.Add($record)
     }
 }
 
-Export-Data -Data $personPermissions -FilePath "$($exportPath)personPermissions.csv"
+Write-Information "Exporting data to CSV..." -InformationAction Continue
+$personPermissions | Export-Csv -Path "$($exportPath)personPermissions.csv" -Delimiter ";" -Encoding UTF8 -NoTypeInformation -Force
