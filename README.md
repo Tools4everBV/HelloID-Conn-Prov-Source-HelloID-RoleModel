@@ -1,7 +1,10 @@
 # HelloID-Conn-Prov-Source-HelloID-RoleModel
 <!-- Version -->
 ## Version
-Version 1.0.0.
+| Version | Description | Date |
+| - | - | - |
+| 1.0.0   | Initial release | 11/08/2021  |
+
 > __This is the initial version, please let us know about any bugs/features!__
 ## Warning: 
 The API is very powerful, therefore the API key and secret must be kept private and be used with care.
