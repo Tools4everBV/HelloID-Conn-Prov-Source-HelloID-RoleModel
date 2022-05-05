@@ -181,7 +181,7 @@ function Invoke-TransformMembershipsToMemberOf {
                     userGuid = $userGuid
                     memberOf = $record.groupGuid
                     isNested = $false
-                    childGroup = $null
+                    parentGroup = $null
                 }
 
                 [void]$usersWithMemberOf.Value.Add($userWithMemberOf)
@@ -199,7 +199,7 @@ function Invoke-TransformMembershipsToMemberOf {
                             groupGuid = $groupGuid
                             memberOf = $record.groupGuid
                             isNested = $true
-                            childGroup =  $groupsGrouped[$groupGuid].name
+                            parentGroup =  $groupsGrouped[$groupGuid].name
                         }
 
                         [void]$usersWithMemberOf.Value.Add($userWithMemberOf)
@@ -358,7 +358,7 @@ $personPermissions = New-Object System.Collections.ArrayList
 if(-not[string]::IsNullOrEmpty($evaluationReportCsv)){
     Write-Information "Gathering data from evaluation report export..." -InformationAction Continue
     $evaluationReport = Import-Csv -Path $evaluationReportCsv -Delimiter "," -Encoding UTF8
-    $evaluationPermissions = $evaluationReport | Where-Object {$_.System -eq $evaluationSystemName -and $_.Type -eq "Permission" -and $_.Operation -eq "Grant"}
+    $evaluationPermissions = $evaluationReport | Where-Object {$_.System -eq $evaluationSystemName -and $_.Type -eq "Permission" -and $_.Operation -eq "Grant" -and $_.EntitlementName -Like "$evaluationPermissionTypeName - *"}
 
     # Add GroupName to evaluation since we need to match to the correct groups
     $evaluationPermissions | Add-Member -MemberType NoteProperty -Name "GroupName" -Value $null -Force
@@ -371,13 +371,13 @@ if(-not[string]::IsNullOrEmpty($evaluationReportCsv)){
             if(-not[String]::IsNullOrEmpty($groupNameMatches)){
                 # If multiple brackets are found, additional actions are required to sanitize the groupname, such as replacing "))" with ")"
                 $groupName = (($groupNameMatches -split '/')[-1]).Replace("))",")")
-                $_.GroupName = $groupName -replace "$entitlementsPermissionTypeName - "
+                $_.GroupName = $groupName -replace "$evaluationPermissionTypeName - "
             }else{
                 # If no matches are found, apply regex to match for groups without brackets
                 $groupNameMatches = [regex]::Matches($_.EntitlementName, '\(.*?\)')
                 # If a match is found, additional actions are required to sanitize the groupname, such as removing the trailing ")"
                 $groupName = (($groupNameMatches -split '/')[-1]).Replace(")","")
-                $_.GroupName = $groupName -replace "$entitlementsPermissionTypeName - "
+                $_.GroupName = $groupName -replace "$evaluationPermissionTypeName - "
             }
         }else{
             $_.GroupName = $_.EntitlementName -replace "$evaluationPermissionTypeName - "
@@ -393,7 +393,7 @@ if(-not[string]::IsNullOrEmpty($evaluationReportCsv)){
 if(-not[string]::IsNullOrEmpty($grantedEntitlementsCsv)){
     Write-Information "Gathering data from granted entitlements export..." -InformationAction Continue
     $entitlementsReport = Import-Csv -Path $grantedEntitlementsCsv -Delimiter "," -Encoding UTF8
-    $entitlementsGranted = $entitlementsReport | Where-Object {$_.System -eq $entitlementsSystemName -and $_.Status -eq "Granted" }
+    $entitlementsGranted = $entitlementsReport | Where-Object {$_.System -eq $entitlementsSystemName -and $_.Status -eq "Granted" -and $_.EntitlementName -Like "$entitlementsPermissionTypeName - *" }
 
     # Add GroupName to evaluation since we need to match to the correct groups
     $entitlementsGranted | Add-Member -MemberType NoteProperty -Name "GroupName" -Value $null -Force
@@ -401,18 +401,22 @@ if(-not[string]::IsNullOrEmpty($grantedEntitlementsCsv)){
 
         # If Target system is AD, the entitlement contains the CannonicalName between brackets, so this needs some regex to filter this out
         if($_.System -eq "Microsoft Active Directory"){
-            # First apply regex to match for groups with brackets
-            $groupNameMatches = [regex]::Matches($_.EntitlementName, '\(.*?\)\)')
-            if(-not[String]::IsNullOrEmpty($groupNameMatches)){
-                # If multiple brackets are found, additional actions are required to sanitize the groupname, such as replacing "))" with ")"
-                $groupName = (($groupNameMatches -split '/')[-1]).Replace("))",")")
-                $_.GroupName = $groupName -replace "$entitlementsPermissionTypeName - "
-            }else{
-                # If no matches are found, apply regex to match for groups without brackets
-                $groupNameMatches = [regex]::Matches($_.EntitlementName, '\(.*?\)')
-                # If a match is found, additional actions are required to sanitize the groupname, such as removing the trailing ")"
-                $groupName = (($groupNameMatches -split '/')[-1]).Replace(")","")
-                $_.GroupName = $groupName -replace "$entitlementsPermissionTypeName - "
+            try{
+                # First apply regex to match for groups with brackets
+                $groupNameMatches = [regex]::Matches($_.EntitlementName, '\(.*?\)\)')
+                if(-not[String]::IsNullOrEmpty($groupNameMatches)){
+                    # If multiple brackets are found, additional actions are required to sanitize the groupname, such as replacing "))" with ")"
+                    $groupName = (($groupNameMatches -split '/')[-1]).Replace("))",")")
+                    $_.GroupName = $groupName -replace "$entitlementsPermissionTypeName - "
+                }else{
+                    # If no matches are found, apply regex to match for groups without brackets
+                    $groupNameMatches = [regex]::Matches($_.EntitlementName, '\(.*?\)')
+                    # If a match is found, additional actions are required to sanitize the groupname, such as removing the trailing ")"
+                    $groupName = (($groupNameMatches -split '/')[-1]).Replace(")","")
+                    $_.GroupName = $groupName -replace "$entitlementsPermissionTypeName - "
+                }
+            }catch{
+                Write-Error $_
             }
         }else{
             $_.GroupName = $_.EntitlementName -replace "$entitlementsPermissionTypeName - "
@@ -480,7 +484,7 @@ foreach ($person in $expandedPersons) {
 
         if($includeNestedGroupMemberships -eq $true){
             $record | Add-Member -MemberType NoteProperty -Name "isNested" -Value $permission.isNested -Force
-            $record | Add-Member -MemberType NoteProperty -Name "childGroup" -Value $permission.childGroup -Force
+            $record | Add-Member -MemberType NoteProperty -Name "parentGroup" -Value $permission.parentGroup -Force
         }
 
         if($personPropertiesToInclude){
