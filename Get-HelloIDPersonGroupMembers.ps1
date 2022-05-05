@@ -366,9 +366,19 @@ if(-not[string]::IsNullOrEmpty($evaluationReportCsv)){
 
         # If Target system is AD, the entitlement contains the CannonicalName between brackets, so this needs some regex to filter this out
         if($_.System -eq "Microsoft Active Directory"){
-            $groupNameMatches = [regex]::Matches($_.EntitlementName, '\(.*?\)')
-            $groupName = ($groupNameMatches -split '/')[-1]
-            $_.GroupName = $groupName -replace "$evaluationPermissionTypeName - "
+            # First apply regex to match for groups with brackets
+            $groupNameMatches = [regex]::Matches($_.EntitlementName, '\(.*?\)\)')
+            if(-not[String]::IsNullOrEmpty($groupNameMatches)){
+                # If multiple brackets are found, additional actions are required to sanitize the groupname, such as replacing "))" with ")"
+                $groupName = (($groupNameMatches -split '/')[-1]).Replace("))",")")
+                $_.GroupName = $groupName -replace "$entitlementsPermissionTypeName - "
+            }else{
+                # If no matches are found, apply regex to match for groups without brackets
+                $groupNameMatches = [regex]::Matches($_.EntitlementName, '\(.*?\)')
+                # If a match is found, additional actions are required to sanitize the groupname, such as removing the trailing ")"
+                $groupName = (($groupNameMatches -split '/')[-1]).Replace(")","")
+                $_.GroupName = $groupName -replace "$entitlementsPermissionTypeName - "
+            }
         }else{
             $_.GroupName = $_.EntitlementName -replace "$evaluationPermissionTypeName - "
         }
@@ -391,9 +401,19 @@ if(-not[string]::IsNullOrEmpty($grantedEntitlementsCsv)){
 
         # If Target system is AD, the entitlement contains the CannonicalName between brackets, so this needs some regex to filter this out
         if($_.System -eq "Microsoft Active Directory"){
-            $groupNameMatches = [regex]::Matches($_.EntitlementName, '\(.*?\)')
-            $groupName = ($groupNameMatches -split '/')[-1]
-            $_.GroupName = $groupName -replace "$entitlementsPermissionTypeName - "
+            # First apply regex to match for groups with brackets
+            $groupNameMatches = [regex]::Matches($_.EntitlementName, '\(.*?\)\)')
+            if(-not[String]::IsNullOrEmpty($groupNameMatches)){
+                # If multiple brackets are found, additional actions are required to sanitize the groupname, such as replacing "))" with ")"
+                $groupName = (($groupNameMatches -split '/')[-1]).Replace("))",")")
+                $_.GroupName = $groupName -replace "$entitlementsPermissionTypeName - "
+            }else{
+                # If no matches are found, apply regex to match for groups without brackets
+                $groupNameMatches = [regex]::Matches($_.EntitlementName, '\(.*?\)')
+                # If a match is found, additional actions are required to sanitize the groupname, such as removing the trailing ")"
+                $groupName = (($groupNameMatches -split '/')[-1]).Replace(")","")
+                $_.GroupName = $groupName -replace "$entitlementsPermissionTypeName - "
+            }
         }else{
             $_.GroupName = $_.EntitlementName -replace "$entitlementsPermissionTypeName - "
         }
