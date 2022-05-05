@@ -16,11 +16,11 @@
 $verboseLogging = $false
 
 # Specify the tenant urlapi key, secret
-$tenantUri = ""
-$apiKey = ""
-$apiSecret = ""
+$tenantUri = "https://<CUSTOMER>.helloid.com"
+$apiKey = "<API_KEY>"
+$apiSecret = "API_SECRET"
 # Filter the accounts and groups in the HelloID directory based on a single filter
-$source = "T4E.local"
+$source = "enyoi.local"
 
 # Toggle to include nested groupmemberships (up to a maximum of 1 layer deep)
 $includeNestedGroupMemberships = $true # or $false
