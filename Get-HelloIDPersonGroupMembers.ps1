@@ -6,11 +6,12 @@
 .NOTES
     Author: Arnout van der Vorst
     Editor: Ramon Schouten
-    Last Edit: 2021-07-07
+    Last Edit: 2021-07-26
     Version 1.0 - initial release
     Version 1.0.1 - Minor updates
     Version 1.1.0 - Added enhancements for checks on evaluation report export and granted entitlements export
     Version 1.1.1 - Added enhancements for nested groupmemberships (1 layer deep), additional source properties to inclued and minor fixes
+    Version 1.1.2 - Added dynamic correlation attribute
 #>
 # Specify whether to output the verbose logging
 $verboseLogging = $false
@@ -29,13 +30,6 @@ $includeNestedGroupMemberships = $true # or $false
 # Make sure the exportPath contains a trailing \ in Windows or / in Unix/MacOS environments
 $exportPath = "C:\HelloID\Provisioning\RoleMining_export\PersonGroupMembers\"
 
-# The location of the Vault export in JSON format (needs to be manually exported from a HelloID Provisioning snapshot).
-$vaultJson = $exportPath + "vault.json"
-# Specify the Person fields from the HelloID Vault export to include in the report (These have to match the exact name from he Vault.json export)
-$personPropertiesToInclude = @("source.displayname","custom.locatie")
-# Specify the Contracts fields from the HelloID Vault export to include in the report (These have to match the exact name from he Vault.json export)
-$contractPropertiesToInclude = @("costCenter.displayname","custom.locatie")
-
 # Optionally, specifiy the parameters below when you want to check the groups against an evaluation report
 # The location of the Evaluation Report Csv (needs to be manually exported from a HelloID Provisioning evaluation).
 $evaluationReportCsv = $exportPath + "Evaluation.csv"
@@ -53,8 +47,15 @@ $entitlementsSystemName = "Microsoft Active Directory"
 $entitlementsPermissionTypeName = "Group Membership"
 
 # The attribute used to correlate a person to an account
-$personCorrelationAttribute = "ExternalId"
-$userCorrelationAttribute = "employeeId"
+$personCorrelationAttribute = "Contact.Business.Email"
+$userCorrelationAttribute = "contactEmail"
+
+# The location of the Vault export in JSON format (needs to be manually exported from a HelloID Provisioning snapshot).
+$vaultJson = $exportPath + "vault.json"
+# Specify the Person fields from the HelloID Vault export to include in the report (These have to match the exact name from he Vault.json export) - Must always contains personCorrelationAttribute!
+$personPropertiesToInclude = @($personCorrelationAttribute, "source.displayname", "custom.locatie")
+# Specify the Contracts fields from the HelloID Vault export to include in the report (These have to match the exact name from he Vault.json export)
+$contractPropertiesToInclude = @("costCenter.displayname", "custom.locatie", "Costcenter.name")
 
 # Basic api uri config
 $uriUsers = $tenantUri + "/api/v1/users"
@@ -99,7 +100,7 @@ function Get-RESTAPIPagedData {
         foreach ($record in $dataset) { [void]$data.Value.add($record) }
 
         $skip += $take
-        while ($dataset.Count -eq $take){
+        while ($dataset.Count -eq $take) {
             $uri = $BaseUri + "?skip=$skip&take=$take"
 
             Write-Verbose -Verbose:$verboseLogging "Getting data from $uri"
@@ -146,7 +147,7 @@ function Get-HelloIDGroupsWithMembers {
 
             $groupAugmented.usersResolved = $usersResolved
 
-            if($includeNestedGroupMemberships -eq $true){
+            if ($includeNestedGroupMemberships -eq $true) {
                 $groupAugmented | Add-Member -MemberType NoteProperty -Name "groupsResolved" -Value $null -Force
                 $groupsResolved = New-Object System.Collections.ArrayList
                 foreach ($group in $groupAugmented.groups) {
@@ -175,12 +176,12 @@ function Invoke-TransformMembershipsToMemberOf {
     try {
         Write-Information "Transforming group memberships to users with memberOf..." -InformationAction Continue
 
-        foreach ($record in $GroupsWithMembers | Where-Object {![String]::IsNullOrEmpty($_.users)} ) {
+        foreach ($record in $GroupsWithMembers | Where-Object { ![String]::IsNullOrEmpty($_.users) } ) {
             foreach ($userGuid in $record.users) {
                 $userWithMemberOf = [PSCustomObject]@{
-                    userGuid = $userGuid
-                    memberOf = $record.groupGuid
-                    isNested = $false
+                    userGuid    = $userGuid
+                    memberOf    = $record.groupGuid
+                    isNested    = $false
                     parentGroup = $null
                 }
 
@@ -188,18 +189,18 @@ function Invoke-TransformMembershipsToMemberOf {
             }
         }
 
-        if($includeNestedGroupMemberships -eq $true){
+        if ($includeNestedGroupMemberships -eq $true) {
             $usersWithMemberOfGrouped = $usersWithMemberOf.Value | Group-Object memberOf -AsHashTable
 
-            foreach ($record in $GroupsWithMembers | Where-Object {![String]::IsNullOrEmpty($_.groups)} ) {
+            foreach ($record in $GroupsWithMembers | Where-Object { ![String]::IsNullOrEmpty($_.groups) } ) {
                 foreach ($groupGuid in $record.groups) {
                     foreach ($userGuid in $usersWithMemberOfGrouped[$groupGuid].userGuid) {
                         $userWithMemberOf = [PSCustomObject]@{
-                            userGuid = $userGuid
-                            groupGuid = $groupGuid
-                            memberOf = $record.groupGuid
-                            isNested = $true
-                            parentGroup =  $groupsGrouped[$groupGuid].name
+                            userGuid    = $userGuid
+                            groupGuid   = $groupGuid
+                            memberOf    = $record.groupGuid
+                            isNested    = $true
+                            parentGroup = $groupsGrouped[$groupGuid].name
                         }
 
                         [void]$usersWithMemberOf.Value.Add($userWithMemberOf)
@@ -231,7 +232,7 @@ function Expand-Persons {
 
             $record = [PSCustomObject]@{
                 source                = $person.Source.DisplayName
-                externalId            = $person.($personCorrelationAttribute)
+                externalId            = $person.ExternalId
                 displayName           = $person.DisplayName
                 contractExternalId    = $person.PrimaryContract.ExternalId
                 departmentId          = $person.PrimaryContract.Department.ExternalId
@@ -245,18 +246,18 @@ function Expand-Persons {
                 endDate               = $endDate
             }
 
-            if($personPropertiesToInclude){
-                foreach($personPropertyToInclude in $personPropertiesToInclude){
+            if ($personPropertiesToInclude) {
+                foreach ($personPropertyToInclude in $personPropertiesToInclude) {
                     $personProperty = '$person' + ".$personPropertyToInclude"
                     $personPropertyValue = ($personProperty | Invoke-Expression) 
-                    $record | Add-Member -MemberType NoteProperty -Name $personPropertyToInclude.replace(".","") -Value $personPropertyValue -Force
+                    $record | Add-Member -MemberType NoteProperty -Name $personPropertyToInclude.replace(".", "") -Value $personPropertyValue -Force
                 }
             }
-            if($contractPropertiesToInclude){
-                foreach($contractPropertyToInclude in $contractPropertiesToInclude){
+            if ($contractPropertiesToInclude) {
+                foreach ($contractPropertyToInclude in $contractPropertiesToInclude) {
                     $contractProperty = '$person.PrimaryContract' + ".$contractPropertyToInclude"
                     $contractPropertyValue = ($contractProperty | Invoke-Expression) 
-                    $record | Add-Member -MemberType NoteProperty -Name $personPropertyToInclude.replace(".","") -Value $contractPropertyValue -Force
+                    $record | Add-Member -MemberType NoteProperty -Name $contractPropertyToInclude.replace(".", "") -Value $contractPropertyValue -Force
                 }
             }
 
@@ -272,7 +273,7 @@ function Expand-Persons {
 
                 $record = [PSCustomObject]@{
                     source                = $person.Source.DisplayName
-                    externalId            = $person.($personCorrelationAttribute)
+                    externalId            = $person.ExternalId
                     displayName           = $person.DisplayName
                     contractExternalId    = $contract.ExternalId
                     departmentId          = $contract.Department.ExternalId
@@ -287,18 +288,18 @@ function Expand-Persons {
                 }
                 [void]$ExpandedPersons.Value.Add($record)
 
-                if($personPropertiesToInclude){
-                    foreach($personPropertyToInclude in $personPropertiesToInclude){
+                if ($personPropertiesToInclude) {
+                    foreach ($personPropertyToInclude in $personPropertiesToInclude) {
                         $personProperty = '$person.' + "$personPropertyToInclude"
                         $personPropertyValue = ($personProperty | Invoke-Expression) 
-                        $record | Add-Member -MemberType NoteProperty -Name $personPropertyToInclude.replace(".","") -Value $personPropertyValue -Force
+                        $record | Add-Member -MemberType NoteProperty -Name $personPropertyToInclude.replace(".", "") -Value $personPropertyValue -Force
                     }
                 }
-                if($contractPropertiesToInclude){
-                    foreach($contractPropertyToInclude in $contractPropertiesToInclude){
+                if ($contractPropertiesToInclude) {
+                    foreach ($contractPropertyToInclude in $contractPropertiesToInclude) {
                         $contractProperty = '$contract.' + "$contractPropertyToInclude"
                         $contractPropertyValue = ($contractProperty | Invoke-Expression) 
-                        $record | Add-Member -MemberType NoteProperty -Name $personPropertyToInclude.replace(".","") -Value $contractPropertyValue -Force
+                        $record | Add-Member -MemberType NoteProperty -Name $contractPropertyToInclude.replace(".", "") -Value $contractPropertyValue -Force
                     }
                 }
 
@@ -325,7 +326,7 @@ $users = New-Object System.Collections.ArrayList
 Get-RESTAPIPagedData -BaseUri $uriUsers -Headers $headers ([ref]$users)
 $users = $users | Where-Object { $_.source -eq $source }
 $users = $users | Where-Object { $_.isDeleted -eq $False }
-$users = $users | Select-Object userGuid, userName, isEnabled -ExpandProperty userAttributes
+$users = $users | Select-Object userGuid, userName, isEnabled, $userCorrelationAttribute -ExpandProperty userAttributes
 $users = $users | Where-Object { [String]::IsNullOrEmpty($_.($userCorrelationAttribute)) -eq $false }
 Export-Clixml -Path "$($exportPath)users.xml" -InputObject $users
 $usersGrouped = $users | Group-Object $userCorrelationAttribute -AsHashTable
@@ -355,31 +356,33 @@ $usersWithMemberOf = $usersWithMemberOf | Group-Object "userGuid" -AsHashTable
 $personPermissions = New-Object System.Collections.ArrayList
 
 # Retrieve evalution
-if(-not[string]::IsNullOrEmpty($evaluationReportCsv)){
+if (-not[string]::IsNullOrEmpty($evaluationReportCsv)) {
     Write-Information "Gathering data from evaluation report export..." -InformationAction Continue
     $evaluationReport = Import-Csv -Path $evaluationReportCsv -Delimiter "," -Encoding UTF8
-    $evaluationPermissions = $evaluationReport | Where-Object {$_.System -eq $evaluationSystemName -and $_.Type -eq "Permission" -and $_.Operation -eq "Grant" -and $_.EntitlementName -Like "$evaluationPermissionTypeName - *"}
+    $evaluationPermissions = $evaluationReport | Where-Object { $_.System -eq $evaluationSystemName -and $_.Type -eq "Permission" -and $_.Operation -eq "Grant" -and $_.EntitlementName -Like "$evaluationPermissionTypeName - *" }
 
     # Add GroupName to evaluation since we need to match to the correct groups
     $evaluationPermissions | Add-Member -MemberType NoteProperty -Name "GroupName" -Value $null -Force
     $evaluationPermissions | ForEach-Object {
 
         # If Target system is AD, the entitlement contains the CannonicalName between brackets, so this needs some regex to filter this out
-        if($_.System -eq "Microsoft Active Directory"){
+        if ($_.System -eq "Microsoft Active Directory") {
             # First apply regex to match for groups with brackets
             $groupNameMatches = [regex]::Matches($_.EntitlementName, '\(.*?\)\)')
-            if(-not[String]::IsNullOrEmpty($groupNameMatches)){
+            if (-not[String]::IsNullOrEmpty($groupNameMatches)) {
                 # If multiple brackets are found, additional actions are required to sanitize the groupname, such as replacing "))" with ")"
-                $groupName = (($groupNameMatches -split '/')[-1]).Replace("))",")")
+                $groupName = (($groupNameMatches -split '/')[-1]).Replace("))", ")")
                 $_.GroupName = $groupName -replace "$evaluationPermissionTypeName - "
-            }else{
+            }
+            else {
                 # If no matches are found, apply regex to match for groups without brackets
                 $groupNameMatches = [regex]::Matches($_.EntitlementName, '\(.*?\)')
                 # If a match is found, additional actions are required to sanitize the groupname, such as removing the trailing ")"
-                $groupName = (($groupNameMatches -split '/')[-1]).Replace(")","")
+                $groupName = (($groupNameMatches -split '/')[-1]).Replace(")", "")
                 $_.GroupName = $groupName -replace "$evaluationPermissionTypeName - "
             }
-        }else{
+        }
+        else {
             $_.GroupName = $_.EntitlementName -replace "$evaluationPermissionTypeName - "
         }
     }
@@ -390,35 +393,38 @@ if(-not[string]::IsNullOrEmpty($evaluationReportCsv)){
 }
 
 # Retrieve entitlements
-if(-not[string]::IsNullOrEmpty($grantedEntitlementsCsv)){
+if (-not[string]::IsNullOrEmpty($grantedEntitlementsCsv)) {
     Write-Information "Gathering data from granted entitlements export..." -InformationAction Continue
     $entitlementsReport = Import-Csv -Path $grantedEntitlementsCsv -Delimiter "," -Encoding UTF8
-    $entitlementsGranted = $entitlementsReport | Where-Object {$_.System -eq $entitlementsSystemName -and $_.Status -eq "Granted" -and $_.EntitlementName -Like "$entitlementsPermissionTypeName - *" }
+    $entitlementsGranted = $entitlementsReport | Where-Object { $_.System -eq $entitlementsSystemName -and $_.Status -eq "Granted" -and $_.EntitlementName -Like "$entitlementsPermissionTypeName - *" }
 
     # Add GroupName to evaluation since we need to match to the correct groups
     $entitlementsGranted | Add-Member -MemberType NoteProperty -Name "GroupName" -Value $null -Force
     $entitlementsGranted | ForEach-Object {
 
         # If Target system is AD, the entitlement contains the CannonicalName between brackets, so this needs some regex to filter this out
-        if($_.System -eq "Microsoft Active Directory"){
-            try{
+        if ($_.System -eq "Microsoft Active Directory") {
+            try {
                 # First apply regex to match for groups with brackets
                 $groupNameMatches = [regex]::Matches($_.EntitlementName, '\(.*?\)\)')
-                if(-not[String]::IsNullOrEmpty($groupNameMatches)){
+                if (-not[String]::IsNullOrEmpty($groupNameMatches)) {
                     # If multiple brackets are found, additional actions are required to sanitize the groupname, such as replacing "))" with ")"
-                    $groupName = (($groupNameMatches -split '/')[-1]).Replace("))",")")
+                    $groupName = (($groupNameMatches -split '/')[-1]).Replace("))", ")")
                     $_.GroupName = $groupName -replace "$entitlementsPermissionTypeName - "
-                }else{
+                }
+                else {
                     # If no matches are found, apply regex to match for groups without brackets
                     $groupNameMatches = [regex]::Matches($_.EntitlementName, '\(.*?\)')
                     # If a match is found, additional actions are required to sanitize the groupname, such as removing the trailing ")"
-                    $groupName = (($groupNameMatches -split '/')[-1]).Replace(")","")
+                    $groupName = (($groupNameMatches -split '/')[-1]).Replace(")", "")
                     $_.GroupName = $groupName -replace "$entitlementsPermissionTypeName - "
                 }
-            }catch{
+            }
+            catch {
                 Write-Error $_
             }
-        }else{
+        }
+        else {
             $_.GroupName = $_.EntitlementName -replace "$entitlementsPermissionTypeName - "
         }
     }
@@ -428,8 +434,15 @@ if(-not[string]::IsNullOrEmpty($grantedEntitlementsCsv)){
     $personsWithGrantedEntitlements = $entitlementsGranted | Group-Object "Person" -AsHashTable
 }
 
+
 foreach ($person in $expandedPersons) {
-    $user = $usersGrouped[$person.externalId]
+    $personCorrelationProperty = $personCorrelationAttribute.replace(".", "")
+    $personCorrelationValue = $person.$personCorrelationProperty
+    if ($null -eq $personCorrelationValue) {
+        Write-Warning "Person $($person.displayName) has no value for correlation attribute: $personCorrelationProperty"
+        continue;
+    }
+    $user = $usersGrouped[$personCorrelationValue]
 
     if ($null -eq $user) { continue; }
 
@@ -438,10 +451,10 @@ foreach ($person in $expandedPersons) {
     if ($null -eq $permissions) { continue; }
 
     # Get evaluated entitlements for person
-    if($null -ne $evaluatedPersonsWithEntitlement){ $evaluatedEntitlements = $evaluatedPersonsWithEntitlement[$person.DisplayName] }
+    if ($null -ne $evaluatedPersonsWithEntitlement) { $evaluatedEntitlements = $evaluatedPersonsWithEntitlement[$person.DisplayName] }
 
     # Get granted entitlements for person
-    if($null -ne $personsWithGrantedEntitlements){ $grantedEntitlements = $personsWithGrantedEntitlements[$person.DisplayName] }
+    if ($null -ne $personsWithGrantedEntitlements) { $grantedEntitlements = $personsWithGrantedEntitlements[$person.DisplayName] }
 
     foreach ($permission in $permissions) {
         $group = $groupsGrouped[$permission.memberOf]
@@ -449,56 +462,58 @@ foreach ($person in $expandedPersons) {
         if ($null -eq $group) { continue; }
         
         # Check if group is in evaluation
-        if($group.name -in $evaluatedEntitlements.GroupName){
+        if ($group.name -in $evaluatedEntitlements.GroupName) {
             $inEvaluation = $true
-        }else{
+        }
+        else {
             $inEvaluation = $false
         }
 
         # Check if group is in granted entitlements
-        if($group.name -in $grantedEntitlements.GroupName){
+        if ($group.name -in $grantedEntitlements.GroupName) {
             $isGranted = $true
-        }else{
+        }
+        else {
             $isGranted = $false
         }
 
         $record = [PSCustomObject]@{
-            source                  = $person.source
-            externalId              = $person.externalId
-            displayName             = $person.displayName
-            departmentId            = $person.departmentId
-            departmentCode          = $person.departmentCode
-            departmentDescription   = $person.departmentDescription
-            titleId                 = $person.titleId
-            titleCode               = $person.titleCode
-            titleDescription        = $person.titleDescription
-            contractIsPrimary       = $person.contractIsPrimary
-            startDate               = $person.startDate
-            endDate                 = $person.endDate
-            userName                = $user.userName
-            isEnabled               = $user.isEnabled
-            permission              = $group.name
-            inEvaluation            = $inEvaluation
-            isGranted               = $isGranted
+            source                = $person.source
+            externalId            = $person.externalId
+            displayName           = $person.displayName
+            departmentId          = $person.departmentId
+            departmentCode        = $person.departmentCode
+            departmentDescription = $person.departmentDescription
+            titleId               = $person.titleId
+            titleCode             = $person.titleCode
+            titleDescription      = $person.titleDescription
+            contractIsPrimary     = $person.contractIsPrimary
+            startDate             = $person.startDate
+            endDate               = $person.endDate
+            userName              = $user.userName
+            isEnabled             = $user.isEnabled
+            permission            = $group.name
+            inEvaluation          = $inEvaluation
+            isGranted             = $isGranted
         }
 
-        if($includeNestedGroupMemberships -eq $true){
+        if ($includeNestedGroupMemberships -eq $true) {
             $record | Add-Member -MemberType NoteProperty -Name "isNested" -Value $permission.isNested -Force
             $record | Add-Member -MemberType NoteProperty -Name "parentGroup" -Value $permission.parentGroup -Force
         }
 
-        if($personPropertiesToInclude){
-            foreach($personPropertyToInclude in $personPropertiesToInclude){
-                $personProperty = '$person.' + $personPropertyToInclude.replace(".","")
+        if ($personPropertiesToInclude) {
+            foreach ($personPropertyToInclude in $personPropertiesToInclude) {
+                $personProperty = '$person.' + $personPropertyToInclude.replace(".", "")
                 $personPropertyValue = ($personProperty | Invoke-Expression) 
-                $record | Add-Member -MemberType NoteProperty -Name $personPropertyToInclude.replace(".","") -Value $personPropertyValue -Force
+                $record | Add-Member -MemberType NoteProperty -Name $personPropertyToInclude.replace(".", "") -Value $personPropertyValue -Force
             }
         }
-        if($contractPropertiesToInclude){
-            foreach($contractPropertyToInclude in $contractPropertiesToInclude){
-                $contractProperty = '$person.' + $contractPropertyToInclude.replace(".","")
+        if ($contractPropertiesToInclude) {
+            foreach ($contractPropertyToInclude in $contractPropertiesToInclude) {
+                $contractProperty = '$person.' + $contractPropertyToInclude.replace(".", "")
                 $contractPropertyValue = ($contractProperty | Invoke-Expression) 
-                $record | Add-Member -MemberType NoteProperty -Name $personPropertyToInclude.replace(".","") -Value $contractPropertyValue -Force
+                $record | Add-Member -MemberType NoteProperty -Name $personPropertyToInclude.replace(".", "") -Value $contractPropertyValue -Force
             }
         }
 

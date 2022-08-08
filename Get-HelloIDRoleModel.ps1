@@ -83,7 +83,7 @@ function Get-RESTAPIPagedData {
         foreach ($record in $dataset) { [void]$data.Value.add($record) }
 
         $skip += $take
-        while ($dataset.Count -eq $take){
+        while ($dataset.Count -eq $take) {
             $uri = $BaseUri + "?skip=$skip&take=$take"
 
             Write-Verbose -Verbose "Getting data from $uri"
