@@ -12,7 +12,7 @@
     Version 1.1.0 - Added enhancements for checks on evaluation report export and granted entitlements export
     Version 1.1.1 - Added enhancements for nested groupmemberships (1 layer deep), additional source properties to inclued and minor fixes
     Version 1.1.2 - Added dynamic correlation attribute
-    Version 1.1.3 - Added support for helloid user custom attributes in correlatin
+    Version 1.1.3 - Added support for helloid user custom attributes in correlation
 #>
 # Specify whether to output the verbose logging
 $verboseLogging = $false
