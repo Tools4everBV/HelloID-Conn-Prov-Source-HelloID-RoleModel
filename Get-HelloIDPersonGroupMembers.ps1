@@ -12,6 +12,7 @@
     Version 1.1.0 - Added enhancements for checks on evaluation report export and granted entitlements export
     Version 1.1.1 - Added enhancements for nested groupmemberships (1 layer deep), additional source properties to inclued and minor fixes
     Version 1.1.2 - Added dynamic correlation attribute
+    Version 1.1.3 - Added support for helloid user custom attributes in correlatin
 #>
 # Specify whether to output the verbose logging
 $verboseLogging = $false
@@ -47,8 +48,8 @@ $entitlementsSystemName = "Microsoft Active Directory"
 $entitlementsPermissionTypeName = "Group Membership"
 
 # The attribute used to correlate a person to an account
-$personCorrelationAttribute = "Contact.Business.Email"
-$userCorrelationAttribute = "contactEmail"
+$personCorrelationAttribute = "Contact.Business.Email" # or e.g. "externalId"
+$userCorrelationAttribute = "contactEmail" # or e.g. "userAttributes.EmployeeID"
 
 # The location of the Vault export in JSON format (needs to be manually exported from a HelloID Provisioning snapshot).
 $vaultJson = $exportPath + "vault.json"
@@ -326,7 +327,13 @@ $users = New-Object System.Collections.ArrayList
 Get-RESTAPIPagedData -BaseUri $uriUsers -Headers $headers ([ref]$users)
 $users = $users | Where-Object { $_.source -eq $source }
 $users = $users | Where-Object { $_.isDeleted -eq $False }
-$users = $users | Select-Object userGuid, userName, isEnabled, $userCorrelationAttribute -ExpandProperty userAttributes
+if ($userCorrelationAttribute.ToLower() -Like "userattributes.*") {
+    $users = $users | Select-Object userGuid, userName, isEnabled -ExpandProperty userAttributes
+    $userCorrelationAttribute = $userCorrelationAttribute.ToLower().replace("userattributes.", "")
+}
+else {
+    $users = $users | Select-Object userGuid, userName, isEnabled, $userCorrelationAttribute -ExpandProperty userAttributes
+}
 $users = $users | Where-Object { [String]::IsNullOrEmpty($_.($userCorrelationAttribute)) -eq $false }
 Export-Clixml -Path "$($exportPath)users.xml" -InputObject $users
 $usersGrouped = $users | Group-Object $userCorrelationAttribute -AsHashTable
