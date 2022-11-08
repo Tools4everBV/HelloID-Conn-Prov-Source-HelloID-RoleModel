@@ -230,6 +230,9 @@ function Expand-Persons {
                 $endDate = Get-Date -Date "2199-01-01 00:00:00"
                 $endDate = $endDate.AddDays(1).AddSeconds(-1)
             }
+            else {
+                $endDate = [DateTime]$person.PrimaryContract.EndDate
+            }
 
             $record = [PSCustomObject]@{
                 source                = $person.Source.DisplayName
@@ -270,6 +273,9 @@ function Expand-Persons {
                 if ($null -eq $contract.EndDate) {
                     $endDate = Get-Date -Date "2199-01-01 00:00:00"
                     $endDate = $endDate.AddDays(1).AddSeconds(-1)
+                }
+                else {
+                    $endDate = [DateTime]$contract.EndDate
                 }
 
                 $record = [PSCustomObject]@{
@@ -520,7 +526,7 @@ foreach ($person in $expandedPersons) {
             foreach ($contractPropertyToInclude in $contractPropertiesToInclude) {
                 $contractProperty = '$person.' + $contractPropertyToInclude.replace(".", "")
                 $contractPropertyValue = ($contractProperty | Invoke-Expression) 
-                $record | Add-Member -MemberType NoteProperty -Name $contractPropertiesToInclude.replace(".", "") -Value $contractPropertyValue -Force
+                $record | Add-Member -MemberType NoteProperty -Name $contractPropertyToInclude.replace(".", "") -Value $contractPropertyValue -Force
             }
         }
 
