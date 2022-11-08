@@ -520,7 +520,7 @@ foreach ($person in $expandedPersons) {
             foreach ($contractPropertyToInclude in $contractPropertiesToInclude) {
                 $contractProperty = '$person.' + $contractPropertyToInclude.replace(".", "")
                 $contractPropertyValue = ($contractProperty | Invoke-Expression) 
-                $record | Add-Member -MemberType NoteProperty -Name $personPropertyToInclude.replace(".", "") -Value $contractPropertyValue -Force
+                $record | Add-Member -MemberType NoteProperty -Name $contractPropertiesToInclude.replace(".", "") -Value $contractPropertyValue -Force
             }
         }
 
