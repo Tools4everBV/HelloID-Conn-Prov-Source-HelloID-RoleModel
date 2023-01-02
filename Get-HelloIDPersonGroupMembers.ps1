@@ -508,6 +508,8 @@ foreach ($person in $expandedPersons) {
             permission            = $group.name
             inEvaluation          = $inEvaluation
             isGranted             = $isGranted
+            FunctieExternalID     = $person.titleId + "|" + $person.titleCode + "|" + $person.externalId
+            DepartmentExternalID  = $person.departmentId + "|" + $person.departmentCode + "|" + $person.externalId
         }
 
         if ($includeNestedGroupMemberships -eq $true) {
