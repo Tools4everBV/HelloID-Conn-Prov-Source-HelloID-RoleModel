@@ -14,9 +14,9 @@ $InformationPreference = "Continue"
 $WarningPreference = "Continue"
 
 # Used to connect to Azure AD Graph API, specify the tenant id, app id & secret
-$AADtenantID = $c.AADtenantID
-$AADAppId = $c.AADAppId
-$AADAppSecret = $c.AADAppSecret
+$AADtenantID = "<AZURE_TENANT_ID>"
+$AADAppId = "<AZURE_APP_ID>"
+$AADAppSecret ="<AZURE_APP_SECRET>"
 
 # Replace path with your path for vault.json, Evaluation.csv and entitlements.csv.
 # Make sure the exportPath contains a trailing \ in Windows or / in Unix/MacOS environments
