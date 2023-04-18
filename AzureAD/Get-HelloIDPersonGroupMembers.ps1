@@ -675,7 +675,7 @@ foreach ($person in $expandedPersons) {
             contractIsPrimary     = $person.contractIsPrimary
             startDate             = $person.startDate
             endDate               = $person.endDate
-            userName              = $user.userName
+            userName              = $user.userPrincipalName
             isEnabled             = $user.accountEnabled
             permission            = $group.displayName
             permissionType        = $group.GroupType
