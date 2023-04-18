@@ -350,7 +350,7 @@ try {
 
     # Define the properties to select (comma seperated)
     # Add optional popertySelection (mandatory: id,displayName,userPrincipalName)
-    $properties = @("id", "displayName", "userPrincipalName", $userCorrelationAttribute)
+    $properties = @("id", "displayName", "userPrincipalName", "accountEnabled", $userCorrelationAttribute)
     $select = "`$select=$($properties -join ",")"
 
     # Get Microsoft Azure AD users (https://learn.microsoft.com/en-us/graph/api/user-list?view=graph-rest-1.0&tabs=http)
@@ -676,8 +676,9 @@ foreach ($person in $expandedPersons) {
             startDate             = $person.startDate
             endDate               = $person.endDate
             userName              = $user.userName
-            isEnabled             = $user.isEnabled
+            isEnabled             = $user.accountEnabled
             permission            = $group.displayName
+            permissionType        = $group.GroupType
             inEvaluation          = $inEvaluation
             isGranted             = $isGranted
             FunctieExternalID     = $person.titleId + "|" + $person.titleCode + "|" + $person.externalId
