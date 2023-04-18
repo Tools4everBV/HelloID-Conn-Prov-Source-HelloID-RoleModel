@@ -18,10 +18,6 @@ $AADtenantID = $c.AADtenantID
 $AADAppId = $c.AADAppId
 $AADAppSecret = $c.AADAppSecret
 
-$AADtenantID = '6b5db95a-9873-426a-90d8-b84baa033a05'
-$AADAppId = '71fb7f24-315a-47f8-8d54-ab76d4fa4b7d'
-$AADAppSecret = 'StN8Q~KYmuyifRZTajYk2GQn4svOaCobAIQ0ecFE'
-
 # Replace path with your path for vault.json, Evaluation.csv and entitlements.csv.
 # Make sure the exportPath contains a trailing \ in Windows or / in Unix/MacOS environments
 $exportPath = "C:\HelloID\Provisioning\RoleMining_export\PersonGroupMembers\"
