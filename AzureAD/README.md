@@ -112,9 +112,9 @@ Select the application we created before, and select “<b>API Permissions</b>�
 To assign a new permission to your application, click the “<b>Add a permission</b>” button.
 From the “<b>Request API Permissions</b>” screen click “<b>Microsoft Graph</b>”.
 For this connector the following permissions are used as <b>Application permissions</b>:
-*	Read and Write all user’s full profiles by using <b><i>User.Read.All</i></b>
-*	Read and Write all groups in an organization’s directory by using <b><i>Group.Read.All</i></b>
-*	Read and Write data to an organization’s directory by using <b><i>Directory.Read.All</i></b>
+*	Read all user’s full profiles by using <b><i>User.Read.All</i></b>
+*	Read all groups in an organization’s directory by using <b><i>Group.Read.All</i></b>
+*	Read data to an organization’s directory by using <b><i>Directory.Read.All</i></b>
 
 Some high-privilege permissions can be set to admin-restricted and require an administrators consent to be granted.
 
