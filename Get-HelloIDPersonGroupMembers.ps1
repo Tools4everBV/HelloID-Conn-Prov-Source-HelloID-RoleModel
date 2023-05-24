@@ -5,14 +5,15 @@
 
 .NOTES
     Author: Arnout van der Vorst
-    Editor: Ramon Schouten
-    Last Edit: 2021-07-26
+    Editor: Jeroen Smit
+    Last Edit: 2023-05-23
     Version 1.0 - initial release
     Version 1.0.1 - Minor updates
     Version 1.1.0 - Added enhancements for checks on evaluation report export and granted entitlements export
     Version 1.1.1 - Added enhancements for nested groupmemberships (1 layer deep), additional source properties to inclued and minor fixes
     Version 1.1.2 - Added dynamic correlation attribute
     Version 1.1.3 - Added support for helloid user custom attributes in correlation
+    Version 1.1.4 - Added status active for the employee
 #>
 # Specify whether to output the verbose logging
 $verboseLogging = $false
@@ -451,10 +452,23 @@ if (-not[string]::IsNullOrEmpty($grantedEntitlementsCsv)) {
 foreach ($person in $expandedPersons) {
     $personCorrelationProperty = $personCorrelationAttribute.replace(".", "")
     $personCorrelationValue = $person.$personCorrelationProperty
+    $person | Add-Member -MemberType NoteProperty -Name 'isActive' -Value '' -Force           
+    
+    # Check if the contract of the person is active
+    $today = Get-Date
+    
+    If (($person.startDate -lt $today) -And ($person.endDate -gt $today)) {
+        $person.isActive = $true
+    }
+    else {
+        $person.isActive = $false
+    }
+    
     if ($null -eq $personCorrelationValue) {
         Write-Warning "Person $($person.displayName) has no value for correlation attribute: $personCorrelationProperty"
         continue;
     }
+
     $user = $usersGrouped[$personCorrelationValue]
 
     if ($null -eq $user) { continue; }
@@ -501,8 +515,9 @@ foreach ($person in $expandedPersons) {
             titleCode             = $person.titleCode
             titleDescription      = $person.titleDescription
             contractIsPrimary     = $person.contractIsPrimary
-            startDate             = $person.startDate
-            endDate               = $person.endDate
+            startDate             = ($person.startDate).ToString('yyyy-MM-dd')
+            endDate               = ($person.endDate).ToString('yyyy-MM-dd')
+            isActive              = $person.isActive
             userName              = $user.userName
             isEnabled             = $user.isEnabled
             permission            = $group.name
