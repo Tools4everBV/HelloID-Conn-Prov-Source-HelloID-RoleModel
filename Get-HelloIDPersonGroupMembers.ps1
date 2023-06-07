@@ -14,6 +14,7 @@
     Version 1.1.2 - Added dynamic correlation attribute
     Version 1.1.3 - Added support for helloid user custom attributes in correlation
     Version 1.1.4 - Added status active for the employee
+    Version 1.1.5 - Added support for no startdate per employee
 #>
 # Specify whether to output the verbose logging
 $verboseLogging = $false
@@ -235,6 +236,14 @@ function Expand-Persons {
                 $endDate = [DateTime]$person.PrimaryContract.EndDate
             }
 
+            if ($null -eq $person.PrimaryContract.startDate) {
+                Write-Warning "$($person.displayName) has no start date on primary contract with externalId [$($person.PrimaryContract.ExternalId)]"
+                continue
+            }
+            else {
+                $startDate = [DateTime]$person.PrimaryContract.startDate
+            }
+
             $record = [PSCustomObject]@{
                 source                = $person.Source.DisplayName
                 externalId            = $person.ExternalId
@@ -247,7 +256,7 @@ function Expand-Persons {
                 titleCode             = $person.PrimaryContract.Title.Code
                 titleDescription      = $person.PrimaryContract.Title.Name
                 contractIsPrimary     = $true
-                startDate             = [DateTime]$person.PrimaryContract.StartDate
+                startDate             = $startDate
                 endDate               = $endDate
             }
 
@@ -279,6 +288,14 @@ function Expand-Persons {
                     $endDate = [DateTime]$contract.EndDate
                 }
 
+                if ($null -eq $contract.StartDate) {
+                    Write-Warning "$($person.displayName) has no start date on non-primary contract with externalId [$($contract.ExternalId)]"
+                    continue
+                }
+                else {
+                    $startDate = [DateTime]$contract.StartDate
+                }
+
                 $record = [PSCustomObject]@{
                     source                = $person.Source.DisplayName
                     externalId            = $person.ExternalId
@@ -291,7 +308,7 @@ function Expand-Persons {
                     titleCode             = $contract.Title.Code
                     titleDescription      = $contract.Title.Name
                     contractIsPrimary     = $false
-                    startDate             = [DateTime]$contract.StartDate
+                    startDate             = $startDate
                     endDate               = $endDate
                 }
                 [void]$ExpandedPersons.Value.Add($record)
