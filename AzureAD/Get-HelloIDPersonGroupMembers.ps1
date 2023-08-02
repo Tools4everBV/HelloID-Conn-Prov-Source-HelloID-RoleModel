@@ -5,8 +5,10 @@
 
 .NOTES
     Author: Ramon Schouten
+    Editor: Jeroen Smit
     Created At: 2023-04-17
-    Version 1.0 - initial release
+    Last Edit: 2023-08-02
+    Version 1.0 - initial release (inclduing status active for the employee and support for no startdate per employee)
 #>
 # Specify whether to output the logging
 $VerbosePreference = 'SilentlyContinue'
@@ -244,6 +246,14 @@ function Expand-Persons {
                 $endDate = [DateTime]$person.PrimaryContract.EndDate
             }
 
+            if ($null -eq $person.PrimaryContract.startDate) {
+                Write-Warning "$($person.displayName) has no start date on primary contract with externalId [$($person.PrimaryContract.ExternalId)]"
+                continue
+            }
+            else {
+                $startDate = [DateTime]$person.PrimaryContract.startDate
+            }
+
             $record = [PSCustomObject]@{
                 source                = $person.Source.DisplayName
                 externalId            = $person.ExternalId
@@ -256,7 +266,7 @@ function Expand-Persons {
                 titleCode             = $person.PrimaryContract.Title.Code
                 titleDescription      = $person.PrimaryContract.Title.Name
                 contractIsPrimary     = $true
-                startDate             = [DateTime]$person.PrimaryContract.StartDate
+                startDate             = $startDate
                 endDate               = $endDate
             }
 
@@ -288,6 +298,14 @@ function Expand-Persons {
                     $endDate = [DateTime]$contract.EndDate
                 }
 
+                if ($null -eq $contract.StartDate) {
+                    Write-Warning "$($person.displayName) has no start date on non-primary contract with externalId [$($contract.ExternalId)]"
+                    continue
+                }
+                else {
+                    $startDate = [DateTime]$contract.StartDate
+                }
+
                 $record = [PSCustomObject]@{
                     source                = $person.Source.DisplayName
                     externalId            = $person.ExternalId
@@ -300,7 +318,7 @@ function Expand-Persons {
                     titleCode             = $contract.Title.Code
                     titleDescription      = $contract.Title.Name
                     contractIsPrimary     = $false
-                    startDate             = [DateTime]$contract.StartDate
+                    startDate             = $startDate
                     endDate               = $endDate
                 }
                 [void]$ExpandedPersons.Value.Add($record)
@@ -623,6 +641,18 @@ if (-not[string]::IsNullOrEmpty($grantedEntitlementsCsv)) {
 foreach ($person in $expandedPersons) {
     $personCorrelationProperty = $personCorrelationAttribute.replace(".", "")
     $personCorrelationValue = $person.$personCorrelationProperty
+    $person | Add-Member -MemberType NoteProperty -Name 'isActive' -Value '' -Force           
+    
+    # Check if the contract of the person is active
+    $today = Get-Date
+    
+    If (($person.startDate -lt $today) -And ($person.endDate -gt $today)) {
+        $person.isActive = $true
+    }
+    else {
+        $person.isActive = $false
+    }
+
     if ($null -eq $personCorrelationValue) {
         Write-Warning "Person $($person.displayName) has no value for correlation attribute: $personCorrelationProperty"
         continue;
@@ -675,6 +705,7 @@ foreach ($person in $expandedPersons) {
             contractIsPrimary     = $person.contractIsPrimary
             startDate             = $person.startDate
             endDate               = $person.endDate
+            isActive              = $person.isActive
             userName              = $user.userPrincipalName
             isEnabled             = $user.accountEnabled
             permission            = $group.displayName
