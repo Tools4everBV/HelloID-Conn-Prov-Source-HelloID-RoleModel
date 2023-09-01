@@ -18,7 +18,9 @@ With this Application Registration you can see a lot of data. Be careful with de
 
 <!-- Description -->
 ## Description
-These Powershell scripts generate overviews to support building a role model
+This Powershell script generates an overview (CSV file) that can be turned into an overview that gives insights into memberships of the employees of the organizations. The pivot tables that can be made of the CSV file can deliver input fo the business rules yet to be created.
+
+This script is used by middle to big organizations. This overview offers insight into the memberships of the employees of the organizations. If the CSV export is turned into a pivot table, several reports can be made.
 
 <!-- TABLE OF CONTENTS -->
 ## Table of Contents
@@ -28,12 +30,10 @@ These Powershell scripts generate overviews to support building a role model
   - [Description](#description)
   - [Table of Contents](#table-of-contents)
   - [Limitation on the scripts](#limitation-on-the-scripts)
-  - [User information](#user-information)
-    - [Get-HelloIDPersonGroupMembers](#get-helloidpersongroupmembers)
   - [Script outcome](#script-outcome)
   - [PowerShell setup script](#powershell-setup-script)
   - [Update connection and configuration details](#update-connection-and-configuration-details)
-    - [Details Get-HelloIDPersonGroupMembers](#details-get-helloidpersongroupmembers)
+    - [Details Get-AzurePersonGroupMembers](#details-get-azurepersongroupmembers)
   - [Introduction](#introduction)
   - [Getting the Azure AD graph API access](#getting-the-azure-ad-graph-api-access)
     - [Application Registration](#application-registration)
@@ -45,25 +45,17 @@ These Powershell scripts generate overviews to support building a role model
 ## Limitation on the scripts
 This script with the Application Registration can only look at Microsoft 365 and Security groups in AzureAD. 
 
-## User information
-With the local CSV export, you can make a report that gives insight into the current situation in the Azure Active Directory. The exported data can be input for the business rules yet
-to be created.
-
-### Get-HelloIDPersonGroupMembers
-This script is used by middle to big organizations. This overview offers insight into the memberships of the employees of the organizations. If the CSV export is turned into a pivot table, several reports can be made.
-
 ## Script outcome
-After configuring and running the "Get-HelloIDRoleModel.ps1" or "Get-HelloIDPersonGroupMembers.ps1" script, the following outcome will be automatically generated. 
+After configuring and running the "Get-AzurePersonGroupMembers.ps1" script, the following outcome will be automatically generated. 
 -   CSV file on a configured local location. 
--   Export data to an HTML path (only with Get-HelloIDRoleModel)
 
 ## PowerShell setup script
-The PowerShell scripts "Get-HelloIDPersonGroupMembers.ps1" contains a complete PowerShell script create a report for RoleMining purposes. Please follow the steps below to set up and run the “Get-HelloIDRoleModel.ps1” PowerShell script in your environment. 
+The PowerShell script "Get-AzurePersonGroupMembers.ps1" contains a complete PowerShell script create a CSV file for Role mining purposes. 
 1.  Create Application Registration, see description below
-2.  Download the " Get-HelloIDRoleModel.ps1" file
+2.  Download the "Get-AzurePersonGroupMembers.ps1" file
 3.  Open it in your favorite PowerShell console/editor
 4.  Update the connection and configuration details in the script's header
-6.  Run the script on a machine with PowerShell support and an internet connection
+5.  Run the script on a machine with PowerShell support and an internet connection
 
 ## Update connection and configuration details
 ### Details Get-HelloIDPersonGroupMembers
@@ -72,7 +64,7 @@ The PowerShell scripts "Get-HelloIDPersonGroupMembers.ps1" contains a complete P
 | $AADtenantID                  | API Key value of your HelloID environment                               | ********                        |
 | $AADAppId                     | API secret value of your HelloID environment                            | ********                        |
 | $AADAppSecret                 | API secret value of your HelloID environment                            | ********                        |
-| $exportPath                   | The path where the csv file will be exported (Make sure the exportPath contains a trailing \ in Windows or / in Unix/MacOS environments)   | C:\HelloID\Provisioning\RoleMining_export\PersonGroupMembers\  |
+| $exportPath                   | The path where the csv file will be exported (Make sure the exportPath contains a trailing \ in Windows or / in Unix/MacOS environments at the end of the path)   | C:\HelloID\Provisioning\RoleMining_export\PersonGroupMembers\  |
 | $evaluationSystemName         | The name of the system on which to check the permissions in the evaluation (Only required when using the evaluation report) | Microsoft Active Directory |
 | $entitlementsSystemName       | The name of the system on which to check the permissions in the evaluation (Only required when using the entitlements report) | Microsoft Active Directory |
 | $personCorrelationAttribute   | The person attribute used to correlate a person to an account           | ExternalId                      |
@@ -82,11 +74,9 @@ The PowerShell scripts "Get-HelloIDPersonGroupMembers.ps1" contains a complete P
 ## Introduction
 The interface to communicate with Microsoft Azure AD is through the Microsoft Graph API.
 
-For this connector we have the option to correlate to existing Azure AD users and provision (dynamic) groupmemberships.
+For this connector we have the option to correlate to existing Azure AD users and groupmemberships.
   >__Currently only Microsoft 365 and Security groups are supported by the [Microsoft Graph API](https://docs.microsoft.com/en-us/graph/api/resources/groups-overview?view=graph-rest-1.0).<br>
-This means we cannot manage Mail-enabled security groups and Distribution groups, These can only be managed using the [Exchange Online connector](https://github.com/Tools4everBV/HelloID-Conn-Prov-Target-ExchangeOnline).__
-
-If you want to create Azure accounts, please use the built-in Microsoft Azure Active Directory target system.
+This means we cannot see Mail-enabled security groups, distribution groups and shared mailboxes in this version of the role mining, see Exchange online version.
 
 <!-- GETTING STARTED -->
 ## Getting the Azure AD graph API access
@@ -102,7 +92,7 @@ The first step to connect to Graph API and make requests, is to register a new <
 * Specify the Redirect URI. You can enter any url as a redirect URI value. In this example we used http://localhost because it doesn't have to resolve.
 * Click the “<b>Register</b>” button to finally create your new application.
 
-Some key items regarding the application are the Application ID (which is the Client ID), the Directory ID (which is the Tenant ID) and Client Secret.
+Some key items regarding the application are the Application ID (which is the Client ID), the Directory ID (which is the Tenant ID) and Client Secret (the value is needed).
 
 ### Configuring App Permissions
 The [Microsoft Graph documentation](https://docs.microsoft.com/en-us/graph) provides details on which permission are required for each permission type.
@@ -140,7 +130,7 @@ The following settings are required to connect to the API.
 | ------------ | ----------- |
 | Azure AD Tenant ID | Id of the Azure tenant |
 | Azure AD App ID | Id of the Azure app |
-| Azure AD App Secret | Secret of the Azure app |
+| Azure AD App Secret | Secret of the Azure app. This is the Value of the secret. |
 
 # HelloID Docs
 The official HelloID documentation can be found at: https://docs.helloid.com/
