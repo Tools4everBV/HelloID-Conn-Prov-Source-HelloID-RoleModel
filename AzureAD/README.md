@@ -30,6 +30,8 @@ This script is used by middle to big organizations. This overview offers insight
   - [Description](#description)
   - [Table of Contents](#table-of-contents)
   - [Limitation on the scripts](#limitation-on-the-scripts)
+  - [User information](#user-information)
+    - [Get-AzurePersonGroupMembers](#get-azurepersongroupmembers)
   - [Script outcome](#script-outcome)
   - [PowerShell setup script](#powershell-setup-script)
   - [Update connection and configuration details](#update-connection-and-configuration-details)
@@ -43,7 +45,14 @@ This script is used by middle to big organizations. This overview offers insight
 - [HelloID Docs](#helloid-docs)
 
 ## Limitation on the scripts
-This script with the Application Registration can only look at Microsoft 365 and Security groups in AzureAD. 
+This script with the Application Registration can only look at Microsoft 365 and Security groups in AzureAD.
+
+## User information
+With the local CSV export, you can make a report that gives insight into the current situation in the Azure Active Directory. The exported data can be input for the business rules yet
+to be created.
+
+### Get-AzurePersonGroupMembers
+This script is used by middle to big organizations. This overview offers insight into the memberships of the employees of the organizations. If the CSV export is turned into a pivot table, several reports can be made.
 
 ## Script outcome
 After configuring and running the "Get-AzurePersonGroupMembers.ps1" script, the following outcome will be automatically generated. 
@@ -58,7 +67,7 @@ The PowerShell script "Get-AzurePersonGroupMembers.ps1" contains a complete Powe
 5.  Run the script on a machine with PowerShell support and an internet connection
 
 ## Update connection and configuration details
-### Details Get-HelloIDPersonGroupMembers
+### Details Get-AzurePersonGroupMembers
 | Variable name                 | Description                                                             | Example value                   |
 | ----------------------------- | ----------------------------------------------------------------------- | ------------------------------- |
 | $AADtenantID                  | API Key value of your HelloID environment                               | ********                        |
