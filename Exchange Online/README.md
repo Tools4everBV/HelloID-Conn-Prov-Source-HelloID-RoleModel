@@ -10,15 +10,15 @@
 ## Version
 | Version | Description | Date |
 | - | - | - |
-| 1.0.0   | Initial release | 11/08/2021  |
+| 1.0.0   | Initial release | 2023/09/01  |
 
 > __This is the initial version, please let us know about any bugs/features!__
 ## Warning: 
-The API is very powerful, therefore the API key and secret must be kept private and be used with care.
+With this Application Registration you can see a lot of data. Be careful with de credentials.
 
 <!-- Description -->
 ## Description
-These Powershell scripts generate overviews to support building a role model
+This Powershell script generates an overview to support building a role model
 
 <!-- TABLE OF CONTENTS -->
 ## Table of Contents
@@ -29,71 +29,140 @@ These Powershell scripts generate overviews to support building a role model
   - [Table of Contents](#table-of-contents)
   - [Limitation on the scripts](#limitation-on-the-scripts)
   - [User information](#user-information)
-    - [Get-HelloIDRoleModel](#get-helloidrolemodel)
-    - [Get-HelloIDPersonGroupMembers](#get-helloidpersongroupmembers)
+    - [Get-EXOSharedMailboxMembers](#get-exosharedmailboxmembers)
   - [Script outcome](#script-outcome)
   - [PowerShell setup script](#powershell-setup-script)
   - [Update connection and configuration details](#update-connection-and-configuration-details)
-    - [Details Get-HelloIDRoleModel](#details-get-helloidrolemodel)
     - [Details Get-HelloIDPersonGroupMembers](#details-get-helloidpersongroupmembers)
+  - [Introduction](#introduction)
+  - [Getting the Azure AD graph API access](#getting-the-azure-ad-graph-api-access)
+    - [Application Registration](#application-registration)
+    - [Configuring App Permissions](#configuring-app-permissions)
+    - [Authentication and Authorization](#authentication-and-authorization)
+    - [Assign Azure AD roles to the application](###assign-azure-ad-roles-to-the-application)
+    - [Connection settings](#connection-settings)
 - [HelloID Docs](#helloid-docs)
 
 ## Limitation on the scripts
-For the scripts there is a sync needed from the target to HelloID. For example a sync from the local Active Directory to HelloID. Not every target systeem can synchrochize to HelloID. At the moment only two different target systems (AD and AAD) are tested to correctly sync with the HelloID Directory.
+This script with the Application Registration can only look at Mail-enabled security groups, distribution groups and shared mailboxes.
 
 ## User information
-With the local CSV export, you can make a report that gives insight into the current situation in the Active Directory. The exported data can be input for the business rules yet
+With the local CSV export, you can make a report that gives insight into the current situation of Shared mailboxes. The exported data can be input for the business rules yet
 to be created.
 
-### Get-HelloIDRoleModel
-This script is used by small organizations. This overview offers insight into memberships by department or function. This overview doesn’t give roles across departments of functions.
-
-### Get-HelloIDPersonGroupMembers
+### Get-EXOSharedMailboxMembers
 This script is used by middle to big organizations. This overview offers insight into the memberships of the employees of the organizations. If the CSV export is turned into a pivot table, several reports can be made.
 
 ## Script outcome
-After configuring and running the "Get-HelloIDRoleModel.ps1" or "Get-HelloIDPersonGroupMembers.ps1" script, the following outcome will be automatically generated. 
+After configuring and running the "Get-EXOSharedMailboxMembers.ps1" script, the following outcome will be automatically generated. 
 -   CSV file on a configured local location. 
--   Export data to an HTML path (only with Get-HelloIDRoleModel)
 
 ## PowerShell setup script
-The PowerShell scripts “Get-HelloIDRoleModel.ps1” and "Get-HelloIDPersonGroupMembers.ps1" contains a complete PowerShell script using the HelloID API to create a report for RoleMining purposes. Please follow the steps below to set up and run the “Get-HelloIDRoleModel.ps1” PowerShell script in your environment. 
-1. Set up a sync to the HelloID Directory. There are two different target systems that are available Active Directory or Azure Active Directory.
-   - Local Active Directory: Set up a “[Synchronize AD](https://docs.helloid.com/hc/en-us/articles/360001592994)” automated task in Automation > Tasks 
-   - AzureAD (only AAD)
-   Enable synchronization with AAD "[Synchronize AAD] (https://docs.helloid.com/hc/en-us/articles/360019160119-Enable-or-disable-Azure-AD-synchronization)" 
-   Because the sync with AAD doesn’t bring the EmployeeId to the HelloID Users. For the script HelloID needs an EmployeeId to correlate the persons and accounts. With "[Sync AzureAD-EmployeeId-HelloID-Users] https://github.com/Tools4everBV/HelloID-Conn-SA-Source-Sync-AzureAD-EmployeeId-HelloID-Users" the EmployeeId can be synced to the HelloID Users. 
-2.  Download the " Get-HelloIDRoleModel.ps1" file
+The PowerShell scripts "Get-EXOSharedMailboxMembers.ps1" contains a complete PowerShell script create a report for RoleMining purposes.  
+1.  Create Application Registration for Azure AD and Exchange Online, see description below
+2.  Download the "Get-Get-EXOSharedMailboxMembers.ps1" file
 3.  Open it in your favorite PowerShell console/editor
-4.  Create a HelloID [API key and secret](https://docs.helloid.com/hc/en-us/articles/360002008873-API-Keys-Overview)
-5.  Update the connection and configuration details in the script's header
-6.  Run the script on a machine with PowerShell support and an internet connection
+4.  Update the connection and configuration details in the script's header
+5.  Run the script on a machine with PowerShell support and an internet connection
 
 ## Update connection and configuration details
-### Details Get-HelloIDRoleModel
+### Details Get-EXOSharedMailboxMembers
 | Variable name                 | Description                                                             | Example value                   |
 | ----------------------------- | ----------------------------------------------------------------------- | ------------------------------- |
-| $script:PortalBaseUrl         | Your HelloID portal's URL                                               | https://customer01.helloid.com  |
-| $apiKey                       | API Key value of your HelloID environment                               | ********                        |
-| $apiSecret                    | API secret value of your HelloID environment                            | ********                        |
-| $source                       | The name of the source in HelloID to filter the accounts and groups on  | enyoi.local                     |
-| $exportPath                   | The path where the csv file will be exported (Make sure the exportPath contains a trailing \ in Windows or / in Unix/MacOS environments)  | C:\HelloID\Provisioning\RoleMining_export\HelloIDRoleModel\  |
-| $relevanceThreshold           | Determines when a permission is relevant enough to be included in the report  | 70                        |
-| $roleOccupantsThreshold       | A role is only included if the number of occupants/acounts meets the threshold  | 1                       |
-| $maxRoles                     | Output the report for a max $ of roles                                  | 50                              |
-
-### Details Get-HelloIDPersonGroupMembers
-| Variable name                 | Description                                                             | Example value                   |
-| ----------------------------- | ----------------------------------------------------------------------- | ------------------------------- |
-| $script:PortalBaseUrl         | Your HelloID portal's URL                                               | https://customer01.helloid.com  |
-| $apiKey                       | API Key value of your HelloID environment                               | ********                        |
-| $apiSecret                    | API secret value of your HelloID environment                            | ********                        |
-| $source                       | The name of the source in HelloID to filter the accounts and groups on  | enyoi.local                     |
+| $AADtenantID                  | API Key value of your HelloID environment                               | ********                        |
+| $AADAppId                     | API secret value of your HelloID environment                            | ********                        |
+| $AADAppSecret                 | API secret value of your HelloID environment                            | ********                        |
 | $exportPath                   | The path where the csv file will be exported (Make sure the exportPath contains a trailing \ in Windows or / in Unix/MacOS environments)   | C:\HelloID\Provisioning\RoleMining_export\PersonGroupMembers\  |
 | $evaluationSystemName         | The name of the system on which to check the permissions in the evaluation (Only required when using the evaluation report) | Microsoft Active Directory |
 | $entitlementsSystemName       | The name of the system on which to check the permissions in the evaluation (Only required when using the entitlements report) | Microsoft Active Directory |
 | $personCorrelationAttribute   | The person attribute used to correlate a person to an account           | ExternalId                      |
 | $userCorrelationAttribute     | The user attribute used to correlate a person to an account             | employeeId                      |
+
+
+## Introduction
+The interface to communicate with Microsoft Azure AD is through the Microsoft Graph API.
+
+For this connector we have the option to correlate to existing Azure AD users and provision (dynamic) groupmemberships.
+  >__Currently only Microsoft 365 and Security groups are supported by the [Microsoft Graph API](https://docs.microsoft.com/en-us/graph/api/resources/groups-overview?view=graph-rest-1.0).<br>
+This means we cannot manage Mail-enabled security groups and Distribution groups, These can only be managed using the [Exchange Online connector](https://github.com/Tools4everBV/HelloID-Conn-Prov-Target-ExchangeOnline).__
+
+If you want to create Azure accounts, please use the built-in Microsoft Azure Active Directory target system.
+
+<!-- GETTING STARTED -->
+## Getting the Azure AD graph API access
+
+By using this connector you will have access to user and groupdata that can be used for role mining.
+
+### Application Registration
+The first step to connect to Graph API and make requests, is to register a new <b>Azure Active Directory Application</b>. The application is used to connect to the API and to manage permissions.
+
+* Navigate to <b>App Registrations</b> in Azure, and select “New Registration” (<b>Azure Portal > Azure Active Directory > App Registration > New Application Registration</b>).
+* Next, give the application a name. In this example we are using “<b>HelloID PowerShell</b>” as application name.
+* Specify who can use this application (<b>Accounts in this organizational directory only</b>).
+* Specify the Redirect URI. You can enter any url as a redirect URI value. In this example we used http://localhost because it doesn't have to resolve.
+* Click the “<b>Register</b>” button to finally create your new application.
+
+Some key items regarding the application are the Application ID (which is the Client ID), the Directory ID (which is the Tenant ID) and Client Secret.
+
+### Configuring App Permissions
+The [Microsoft Graph documentation](https://docs.microsoft.com/en-us/graph) provides details on which permission are required for each permission type.
+
+>__Get AD users__
+To assign your application the right permissions, navigate to <b>Azure Portal > Azure Active Directory >App Registrations</b>.
+Select the application we created before, and select “<b>API Permissions</b>” or “<b>View API Permissions</b>”.
+To assign a new permission to your application, click the “<b>Add a permission</b>” button.
+From the “<b>Request API Permissions</b>” screen click “<b>Microsoft Graph</b>”.
+For this connector the following permissions are used as <b>Application permissions</b>:
+*	Read all user’s full profiles by using <b><i>User.Read.All</i></b>
+
+>__Get Exchange online permissions__
+To assign your application the right permissions, navigate to <b>Azure Portal > Azure Active Directory >App Registrations</b>.
+Select the application we created before, and select “<b>API Permissions</b>” or “<b>View API Permissions</b>”.
+To assign a new permission to your application, click the “<b>Add a permission</b>” button.
+From the “<b>Request API Permissions</b>” screen click “<b>Office 365 Exchange Online</b>”.
+For this connector the following permissions are used as <b>Application permissions</b>:
+> _The Office 365 Exchange Online might not be a selectable API. In thise case, select "APIs my organization uses" and search here for "Office 365 Exchange Online"__
+*	Manage Exchange As Application <b><i>Exchange.ManageAsApp</i></b>
+
+Some high-privilege permissions can be set to admin-restricted and require an administrators consent to be granted.
+
+To grant admin consent to our application press the “<b>Grant admin consent for TENANT</b>” button.
+
+### Authentication and Authorization
+There are multiple ways to authenticate to the Graph API with each has its own pros and cons, in this example we are using the Authorization Code grant type.
+
+*	First we need to get the <b>Client ID</b>, go to the <b>Azure Portal > Azure Active Directory > App Registrations</b>.
+*	Select your application and copy the Application (client) ID value.
+*	After we have the Client ID we also have to create a <b>Client Secret</b>.
+*	From the Azure Portal, go to <b>Azure Active Directory > App Registrations</b>.
+*	Select the application we have created before, and select "<b>Certificates and Secrets</b>". 
+*	Under “Client Secrets” click on the “<b>New Client Secret</b>” button to create a new secret.
+*	Provide a logical name for your secret in the Description field, and select the expiration date for your secret.
+*	It's IMPORTANT to copy the newly generated client secret, because you cannot see the value anymore after you close the page.
+*	At last we need to get the <b>Tenant ID</b>. This can be found in the Azure Portal by going to <b>Azure Active Directory > Overview</b>.
+
+### Assign Azure AD roles to the application
+Azure AD has more than 50 admin roles available. The <b>Exchange Administrator</b> role should provide the required permissions for any task in Exchange Online PowerShell. However, some actions may not be allowed, such as managing other admin accounts, for this the Global Administrator would be required. and Exchange Administrator roles. Please note that the required role may vary based on your configuration.
+* To assign the role(s) to your application, navigate to <b>Azure Portal > Azure Active Directory > Roles and administrators</b>.
+* On the Roles and administrators page that opens, find and select one of the supported roles e.g. “<b>Exchange Administrator</b>” by clicking on the name of the role (not the check box) in the results.
+* On the Assignments page that opens, click the “<b>Add assignments</b>” button.
+* In the Add assignments flyout that opens, <b>find and select the app that we created before</b>.
+* When you're finished, click <b>Add</b>.
+* Back on the Assignments page, <b>verify that the app has been assigned to the role</b>.
+
+For more information about the permissions, please see the Microsoft docs:
+* [Permissions in Exchange Online](https://learn.microsoft.com/en-us/exchange/permissions-exo/permissions-exo).
+* [Find the permissions required to run any Exchange cmdlet](https://learn.microsoft.com/en-us/powershell/exchange/find-exchange-cmdlet-permissions?view=exchange-ps).
+* [View and assign administrator roles in Azure Active Directory](https://learn.microsoft.com/en-us/powershell/exchange/find-exchange-cmdlet-permissions?view=exchange-ps).
+
+### Connection settings
+The following settings are required to connect to the API.
+
+| Setting     | Description |
+| ------------ | ----------- |
+| Azure AD Tenant ID | Id of the Azure tenant |
+| Azure AD App ID | Id of the Azure app |
+| Azure AD App Secret | Secret of the Azure app. Needs to be the value |
 
 # HelloID Docs
 The official HelloID documentation can be found at: https://docs.helloid.com/
