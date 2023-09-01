@@ -1,16 +1,16 @@
 # HelloID-Conn-Prov-Source-HelloID-RoleModel
 
-| :information_source: Information |
-|:---------------------------|
-| This repository contains the connector and configuration code only. The implementer is responsible to acquire the connection details such as username, password, certificate, etc. You might even need to sign a contract or agreement with the supplier before implementing this connector. Please contact the client's application manager to coordinate the connector requirements.       |
+| :information_source: Information                                                                                                                                                                                                                                                                                                                                                       |
+| :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| This repository contains the connector and configuration code only. The implementer is responsible to acquire the connection details such as username, password, certificate, etc. You might even need to sign a contract or agreement with the supplier before implementing this connector. Please contact the client's application manager to coordinate the connector requirements. |
 
 <br />
 
 <!-- Version -->
 ## Version
-| Version | Description | Date |
-| - | - | - |
-| 1.0.0   | Initial release | 11/08/2021  |
+| Version | Description     | Date       |
+| ------- | --------------- | ---------- |
+| 1.0.0   | Initial release | 11/08/2021 |
 
 > __This is the initial version, please let us know about any bugs/features!__
 ## Warning: 
@@ -71,29 +71,29 @@ The PowerShell scripts “Get-HelloIDRoleModel.ps1” and "Get-HelloIDPersonGrou
 
 ## Update connection and configuration details
 ### Details Get-HelloIDRoleModel
-| Variable name                 | Description                                                             | Example value                   |
-| ----------------------------- | ----------------------------------------------------------------------- | ------------------------------- |
-| $script:PortalBaseUrl         | Your HelloID portal's URL                                               | https://customer01.helloid.com  |
-| $apiKey                       | API Key value of your HelloID environment                               | ********                        |
-| $apiSecret                    | API secret value of your HelloID environment                            | ********                        |
-| $source                       | The name of the source in HelloID to filter the accounts and groups on  | enyoi.local                     |
-| $exportPath                   | The path where the csv file will be exported (Make sure the exportPath contains a trailing \ in Windows or / in Unix/MacOS environments)  | C:\HelloID\Provisioning\RoleMining_export\HelloIDRoleModel\  |
-| $relevanceThreshold           | Determines when a permission is relevant enough to be included in the report  | 70                        |
-| $roleOccupantsThreshold       | A role is only included if the number of occupants/acounts meets the threshold  | 1                       |
-| $maxRoles                     | Output the report for a max $ of roles                                  | 50                              |
+| Variable name           | Description                                                                                                                              | Example value                                               |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| $script:PortalBaseUrl   | Your HelloID portal's URL                                                                                                                | https://customer01.helloid.com                              |
+| $apiKey                 | API Key value of your HelloID environment                                                                                                | ********                                                    |
+| $apiSecret              | API secret value of your HelloID environment                                                                                             | ********                                                    |
+| $source                 | The name of the source in HelloID to filter the accounts and groups on                                                                   | enyoi.local                                                 |
+| $exportPath             | The path where the csv file will be exported (Make sure the exportPath contains a trailing \ in Windows or / in Unix/MacOS environments) | C:\HelloID\Provisioning\RoleMining_export\HelloIDRoleModel\ |
+| $relevanceThreshold     | Determines when a permission is relevant enough to be included in the report                                                             | 70                                                          |
+| $roleOccupantsThreshold | A role is only included if the number of occupants/acounts meets the threshold                                                           | 1                                                           |
+| $maxRoles               | Output the report for a max $ of roles                                                                                                   | 50                                                          |
 
 ### Details Get-HelloIDPersonGroupMembers
-| Variable name                 | Description                                                             | Example value                   |
-| ----------------------------- | ----------------------------------------------------------------------- | ------------------------------- |
-| $script:PortalBaseUrl         | Your HelloID portal's URL                                               | https://customer01.helloid.com  |
-| $apiKey                       | API Key value of your HelloID environment                               | ********                        |
-| $apiSecret                    | API secret value of your HelloID environment                            | ********                        |
-| $source                       | The name of the source in HelloID to filter the accounts and groups on  | enyoi.local                     |
-| $exportPath                   | The path where the csv file will be exported (Make sure the exportPath contains a trailing \ in Windows or / in Unix/MacOS environments)   | C:\HelloID\Provisioning\RoleMining_export\PersonGroupMembers\  |
-| $evaluationSystemName         | The name of the system on which to check the permissions in the evaluation (Only required when using the evaluation report) | Microsoft Active Directory |
-| $entitlementsSystemName       | The name of the system on which to check the permissions in the evaluation (Only required when using the entitlements report) | Microsoft Active Directory |
-| $personCorrelationAttribute   | The person attribute used to correlate a person to an account           | ExternalId                      |
-| $userCorrelationAttribute     | The user attribute used to correlate a person to an account             | employeeId                      |
+| Variable name               | Description                                                                                                                              | Example value                                                 |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| $script:PortalBaseUrl       | Your HelloID portal's URL                                                                                                                | https://customer01.helloid.com                                |
+| $apiKey                     | API Key value of your HelloID environment                                                                                                | ********                                                      |
+| $apiSecret                  | API secret value of your HelloID environment                                                                                             | ********                                                      |
+| $source                     | The name of the source in HelloID to filter the accounts and groups on                                                                   | enyoi.local                                                   |
+| $exportPath                 | The path where the csv file will be exported (Make sure the exportPath contains a trailing \ in Windows or / in Unix/MacOS environments) | C:\HelloID\Provisioning\RoleMining_export\PersonGroupMembers\ |
+| $evaluationSystemName       | The name of the system on which to check the permissions in the evaluation (Only required when using the evaluation report)              | Microsoft Active Directory                                    |
+| $entitlementsSystemName     | The name of the system on which to check the permissions in the evaluation (Only required when using the entitlements report)            | Microsoft Active Directory                                    |
+| $personCorrelationAttribute | The person attribute used to correlate a person to an account                                                                            | ExternalId                                                    |
+| $userCorrelationAttribute   | The user attribute used to correlate a person to an account                                                                              | employeeId                                                    |
 
 # HelloID Docs
 The official HelloID documentation can be found at: https://docs.helloid.com/
