@@ -159,9 +159,9 @@ function Get-HelloIDGroupsWithMembers {
                     [void]$groupsResolved.Add($groupResolved)
                 }
                 $groupAugmented.groupsResolved = $groupsResolved
-
-                [void]$groupsWithMembers.Value.Add($groupAugmented)
             }
+
+            [void]$groupsWithMembers.Value.Add($groupAugmented)
         }
     }
     catch {
