@@ -9,6 +9,7 @@
     Created At: 2023-04-17
     Last Edit: 2023-08-02
     Version 1.0 - initial release (inclduing status active for the employee and support for no startdate per employee)
+    Version 1.1 - added reporting for persons with no correlation attribute, persons with no account or accounts with no permissions
 #>
 # Specify whether to output the logging
 $VerbosePreference = 'SilentlyContinue'
@@ -354,7 +355,7 @@ $persons = $snapshot.Persons
 
 #region Expand persons with contracts
 $expandedPersons = New-Object System.Collections.ArrayList
-Expand-Persons -Persons $snapshot.Persons ([ref]$ExpandedPersons)
+Expand-Persons -Persons $persons ([ref]$ExpandedPersons)
 #endregion Expand persons with contracts
 
 #region Retrieve all users
@@ -637,6 +638,10 @@ if (-not[string]::IsNullOrEmpty($grantedEntitlementsCsv)) {
     $personsWithGrantedEntitlements = $entitlementsGranted | Group-Object "Person" -AsHashTable
 }
 
+# Create three arraylists
+$personsWithoutCorrelationValue = [System.Collections.ArrayList]::new()
+$personsWithoutUser = [System.Collections.ArrayList]::new()
+$personsWithoutPermissions = [System.Collections.ArrayList]::new()
 
 foreach ($person in $expandedPersons) {
     $personCorrelationProperty = $personCorrelationAttribute.replace(".", "")
@@ -654,16 +659,48 @@ foreach ($person in $expandedPersons) {
     }
 
     if ($null -eq $personCorrelationValue) {
-        Write-Warning "Person $($person.displayName) has no value for correlation attribute: $personCorrelationProperty"
+        Write-Verbose "Person $($person.displayName) has no value for correlation attribute: $personCorrelationProperty"
+        $personWithoutCorrelationValueObject = [PSCustomObject]@{
+            "Person displayname"          = $person.displayName
+            "Person externalId"           = $person.externalId
+            "Person is active"            = $person.isActive
+            "Person correlation property" = $personCorrelationProperty
+            "Person correlation value"    = "$($personCorrelationValue)"
+        }
+        [void]$personsWithoutCorrelationValue.Add($personWithoutCorrelationValueObject)
         continue;
     }
     $user = $usersGrouped[$personCorrelationValue]
 
-    if ($null -eq $user) { continue; }
+    if ($null -eq $user) { 
+        Write-Verbose "No user found where $($userCorrelationAttribute) = $($personCorrelationValue) for person $($person.displayName)"
+        $personWithoutUserObject = [PSCustomObject]@{
+            "Person displayname"          = $person.displayName
+            "Person externalId"           = $person.externalId
+            "Person is active"            = $person.isActive
+            "Person correlation property" = $personCorrelationProperty
+            "Person correlation value"    = "$($personCorrelationValue)"
+        }
+        [void]$personsWithoutUser.Add($personWithoutUserObject)
+        continue; 
+    }
 
     $permissions = $usersWithMemberOf[$user.id]
 
-    if ($null -eq $permissions) { continue; }
+    if ($null -eq $permissions) { 
+        Write-Verbose "No permission(s) found where Userguid = $($user.id) for person $($person.displayName)"
+        $personWithoutPermissionsObject = [PSCustomObject]@{
+            "Person displayname"          = $person.displayName
+            "Person externalId"           = $person.externalId
+            "Person is active"            = $person.isActive
+            "Person correlation property" = $personCorrelationProperty
+            "Person correlation value"    = "$($personCorrelationValue)"
+            "User ID"                     = "$($user.id)"
+        }
+        
+        [void]$personsWithoutPermissions.Add($personWithoutPermissionsObject)
+        continue; 
+    }
 
     # Get evaluated entitlements for person
     if ($null -ne $evaluatedPersonsWithEntitlement) { $evaluatedEntitlements = $evaluatedPersonsWithEntitlement[$person.DisplayName] }
@@ -734,6 +771,20 @@ foreach ($person in $expandedPersons) {
         [void]$personPermissions.Add($record)
     }
 }
+
+#region security logging exports
+if (($personsWithoutCorrelationValue | Measure-Object).Count -gt 0) {
+    $personsWithoutCorrelationValue | Export-Csv -Path "$($exportPath)personsWithoutCorrelationValue.csv" -Delimiter ";" -Encoding UTF8 -NoTypeInformation -Force
+}
+
+if (($personsWithoutUser | Measure-Object).Count -gt 0) {
+    $personsWithoutUser | Export-Csv -Path "$($exportPath)personsWithoutUser.csv" -Delimiter ";" -Encoding UTF8 -NoTypeInformation -Force
+}
+
+if (($personsWithoutPermissions | Measure-Object).Count -gt 0) {
+    $personsWithoutPermissions | Export-Csv -Path "$($exportPath)personsWithoutPermissions.csv" -Delimiter ";" -Encoding UTF8 -NoTypeInformation -Force
+}
+#endregion
 
 Write-Information "Exporting data to CSV..." -InformationAction Continue
 $personPermissions | Export-Csv -Path "$($exportPath)personPermissions.csv" -Delimiter ";" -Encoding UTF8 -NoTypeInformation -Force
