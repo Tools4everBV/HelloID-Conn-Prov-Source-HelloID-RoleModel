@@ -851,6 +851,21 @@ foreach ($person in $expandedPersons) {
             $dummyRecord | Add-Member -MemberType NoteProperty -Name "isNested" -Value $false -Force
             $dummyRecord | Add-Member -MemberType NoteProperty -Name "parentGroup" -Value $null -Force
         }
+
+        if ($personPropertiesToInclude) {
+            foreach ($personPropertyToInclude in $personPropertiesToInclude) {
+                $personProperty = '$person.' + $personPropertyToInclude.replace(".", "")
+                $personPropertyValue = ($personProperty | Invoke-Expression) 
+                $dummyRecord | Add-Member -MemberType NoteProperty -Name $personPropertyToInclude.replace(".", "") -Value $personPropertyValue -Force
+            }
+        }
+        if ($contractPropertiesToInclude) {
+            foreach ($contractPropertyToInclude in $contractPropertiesToInclude) {
+                $contractProperty = '$person.' + $contractPropertyToInclude.replace(".", "")
+                $contractPropertyValue = ($contractProperty | Invoke-Expression) 
+                $dummyRecord | Add-Member -MemberType NoteProperty -Name $contractPropertyToInclude.replace(".", "") -Value $contractPropertyValue -Force
+            }
+        }
         [void]$personPermissions.Add($dummyRecord)
     }
 }
