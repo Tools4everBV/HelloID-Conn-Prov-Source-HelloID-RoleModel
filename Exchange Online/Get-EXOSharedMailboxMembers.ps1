@@ -5,11 +5,12 @@
 
 .NOTES
     Author: Ramon Schouten
-    Editor: Jeroen Smit
+    Editor: Remco Houthuijzen
     Created At: 2023-08-03
-    Last Edit: 2023-08-03
-    Version 1.0 - initial release (inclduing status active for the employee and support for no startdate per employee)
-    Version 1.1 - Added reporting for persons with no correlation attribute, persons with no account or accounts with no permissions
+    Last Edit: 2024-01-24
+    Version 1.0 - RS - initial release (inclduing status active for the employee and support for no startdate per employee)
+    Version 1.1 - JS - Added reporting for persons with no correlation attribute, persons with no account or accounts with no permissions
+    Version 1.2 - RH - Added dummy group option
 #>
 
 # Specify whether to output the logging
@@ -21,10 +22,13 @@ $WarningPreference = "Continue"
 $AADOrganization = "<customer domain>.onmicrosoft.com"  # always .onmicrosoft.com
 $AADtenantID = "<AZURE_TENANT_ID>"
 $AADAppId = "<AZURE_APP_ID>"
-$AADAppSecret ="<AZURE_APP_SECRET>"
+$AADAppSecret = "<AZURE_APP_SECRET>"
 
 # Toggle to include nested groupmemberships in Shared Mailboxes (up to a maximum of 1 layer deep)
 $includeNestedGroupMemberships = $true # or $false
+
+# Toggle to add dummy group to result for each person
+$addDummyGroup = $true # or $false
 
 ## Replace path with your path for vault.json, Evaluation.csv and entitlements.csv.
 ## Make sure the exportPath contains a trailing \ in Windows or / in Unix/MacOS environments
@@ -1064,6 +1068,59 @@ foreach ($person in $expandedPersons) {
         }
 
         [void]$personPermissions.Add($record)
+    }
+
+    foreach ($systemPermissionOption in $systemPermissionOptions) {
+
+        #add dummy group
+        if ($addDummyGroup -eq $true) {
+            $dummyRecord = [PSCustomObject]@{
+                source                = $person.source
+                externalId            = $person.externalId
+                displayName           = $person.displayName
+                departmentId          = $person.departmentId
+                departmentCode        = $person.departmentCode
+                departmentDescription = $person.departmentDescription
+                titleId               = $person.titleId
+                titleCode             = $person.titleCode
+                titleDescription      = $person.titleDescription
+                contractIsPrimary     = $person.contractIsPrimary
+                startDate             = $person.startDate
+                endDate               = $person.endDate
+                isActive              = $person.isActive
+                userName              = $user.userPrincipalName
+                isEnabled             = $user.accountEnabled
+                mailboxUPN            = "Dummy@dummy.com"
+                mailboxName           = "Dummy"
+                mailboxDisplayName    = "Dummy group"
+                permissionType        = $systemPermissionOption
+                inEvaluation          = $false
+                isGranted             = $false
+                FunctieExternalID     = $person.titleId + "|" + $person.titleCode + "|" + $person.externalId
+                DepartmentExternalID  = $person.departmentId + "|" + $person.departmentCode + "|" + $person.externalId
+            }
+        
+            if ($includeNestedGroupMemberships -eq $true) {
+                $dummyRecord | Add-Member -MemberType NoteProperty -Name "isNested" -Value $false -Force
+                $dummyRecord | Add-Member -MemberType NoteProperty -Name "parentGroup" -Value $null -Force
+            }
+        
+            if ($personPropertiesToInclude) {
+                foreach ($personPropertyToInclude in $personPropertiesToInclude) {
+                    $personProperty = '$person.' + $personPropertyToInclude.replace(".", "")
+                    $personPropertyValue = ($personProperty | Invoke-Expression) 
+                    $dummyRecord | Add-Member -MemberType NoteProperty -Name $personPropertyToInclude.replace(".", "") -Value $personPropertyValue -Force
+                }
+            }
+            if ($contractPropertiesToInclude) {
+                foreach ($contractPropertyToInclude in $contractPropertiesToInclude) {
+                    $contractProperty = '$person.' + $contractPropertyToInclude.replace(".", "")
+                    $contractPropertyValue = ($contractProperty | Invoke-Expression) 
+                    $dummyRecord | Add-Member -MemberType NoteProperty -Name $contractPropertyToInclude.replace(".", "") -Value $contractPropertyValue -Force
+                }
+            }
+            [void]$personPermissions.Add($dummyRecord)
+        }
     }
 }
 
