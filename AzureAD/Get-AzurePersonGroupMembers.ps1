@@ -5,12 +5,13 @@
 
 .NOTES
     Author: Ramon Schouten
-    Editor: Remco Houthuijzen
+    Editor: Jeroen Smit
     Created At: 2023-04-17
-    Last Edit: 2024-01-11
+    Last Edit: 2024-03-25
     Version 1.0 (RS) - initial release (inclduing status active for the employee and support for no startdate per employee)
     Version 1.1 (JS) - added reporting for persons with no correlation attribute, persons with no account or accounts with no permissions
     Version 1.2 (RH) - added nesting support
+    Version 1.2.1 (JS) - fix column 'Status' is removed from export 'entilements.csv'
 #>
 # Specify whether to output the logging
 $VerbosePreference = 'SilentlyContinue'
@@ -670,7 +671,7 @@ if (-not[string]::IsNullOrEmpty($evaluationReportCsv)) {
 if (-not[string]::IsNullOrEmpty($grantedEntitlementsCsv)) {
     Write-Information "Gathering data from granted entitlements export..." -InformationAction Continue
     $entitlementsReport = Import-Csv -Path $grantedEntitlementsCsv -Delimiter "," -Encoding UTF8
-    $entitlementsGranted = $entitlementsReport | Where-Object { $_.System -eq $entitlementsSystemName -and $_.Status -eq "Granted" -and $_.EntitlementName -Like "$entitlementsPermissionTypeName - *" }
+    $entitlementsGranted = $entitlementsReport | Where-Object { $_.System -eq $entitlementsSystemName -and $_.EntitlementName -Like "$entitlementsPermissionTypeName - *" }
 
     # Add GroupName to evaluation since we need to match to the correct groups
     $entitlementsGranted | Add-Member -MemberType NoteProperty -Name "GroupName" -Value $null -Force
