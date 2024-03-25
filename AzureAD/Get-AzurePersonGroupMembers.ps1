@@ -5,11 +5,12 @@
 
 .NOTES
     Author: Ramon Schouten
-    Editor: Jeroen Smit
+    Editor: Remco Houthuijzen
     Created At: 2023-04-17
-    Last Edit: 2023-08-02
-    Version 1.0 - initial release (inclduing status active for the employee and support for no startdate per employee)
-    Version 1.1 - added reporting for persons with no correlation attribute, persons with no account or accounts with no permissions
+    Last Edit: 2024-01-11
+    Version 1.0 (RS) - initial release (inclduing status active for the employee and support for no startdate per employee)
+    Version 1.1 (JS) - added reporting for persons with no correlation attribute, persons with no account or accounts with no permissions
+    Version 1.2 (RH) - added nesting support
 #>
 # Specify whether to output the logging
 $VerbosePreference = 'SilentlyContinue'
@@ -20,6 +21,12 @@ $WarningPreference = "Continue"
 $AADtenantID = "<AZURE_TENANT_ID>"
 $AADAppId = "<AZURE_APP_ID>"
 $AADAppSecret = "<AZURE_APP_SECRET>"
+
+# Toggle to include nested groupmemberships (up to a maximum of 1 layer deep)
+$includeNestedGroupMemberships = $true # or $false
+
+# Toggle to add dummy group to result for each person
+$addDummyGroup = $true # or $false
 
 # Replace path with your path for vault.json, Evaluation.csv and entitlements.csv.
 # Make sure the exportPath contains a trailing \ in Windows or / in Unix/MacOS environments
@@ -212,14 +219,36 @@ function Invoke-TransformMembershipsToMemberOf {
     try {
         Write-Information "Transforming group memberships to users with memberOf..." -InformationAction Continue
 
-        foreach ($record in $GroupsWithMembers | Where-Object { ![String]::IsNullOrEmpty($_.users) } ) {
-            foreach ($user in $record.users) {
-                $userWithMemberOf = [PSCustomObject]@{
-                    userGuid = $user.id
-                    memberOf = $record.GroupId
+        foreach ($record in $GroupsWithMembers) {   
+            if ($record.users.'@odata.type' -eq '#microsoft.graph.user') {
+                foreach ($user in $record.users) {
+                    $userWithMemberOf = [PSCustomObject]@{
+                        userGuid    = $user.id
+                        memberOf    = $record.Id
+                        isNested    = $false
+                        parentGroup = $null
+                    }
+                    [void]$usersWithMemberOf.Value.Add($userWithMemberOf)
                 }
+            }
+        }
 
-                [void]$usersWithMemberOf.Value.Add($userWithMemberOf)
+        if ($includeNestedGroupMemberships -eq $true) {
+            $usersWithMemberOfGrouped = $usersWithMemberOf.Value | Group-Object -Property memberOf -AsString -AsHashTable
+            foreach ($record in $GroupsWithMembers) {
+                if ($record.groups.'@odata.type' -eq '#microsoft.graph.group') {
+                    foreach ($groupGuid in $record.groups) {
+                        foreach ($userGuid in $usersWithMemberOfGrouped[$groupGuid.id].userGuid) {
+                            $userWithMemberOf = [PSCustomObject]@{
+                                userGuid    = $userGuid
+                                memberOf    = $record.Id
+                                isNested    = $true
+                                parentGroup = $groupsWithMembersHashTable[$groupGuid.id].Name
+                            }
+                            [void]$usersWithMemberOf.Value.Add($userWithMemberOf)
+                        }
+                    }
+                }                
             }
         }
     }
@@ -556,7 +585,7 @@ try {
         }
         $getGroupMembersResponse = $null
         $getGroupMembersResponse = Invoke-RestMethod @splatWebRequest -Verbose:$false
-        foreach ($groupMember in $getGroupMembersResponse.value) { $null = $groupMembers.Add($groupMember) }
+        foreach ($groupMember in $getGroupMembersResponse.value) { $null = $groupMembers.Add($groupMember) }    
         
         while (![string]::IsNullOrEmpty($getGroupMembersResponse.'@odata.nextLink')) {
             $baseUri = "https://graph.microsoft.com/"
@@ -570,15 +599,30 @@ try {
             foreach ($groupMember in $getGroupMembersResponse.value) { $null = $groupMembers.Add($groupMember) }
         }
 
-        $groupAugmented = [PSCustomObject]@{
-            GroupId = $group.id
-            Users   = $groupMembers
+        $groupAugmented = [PSCustomObject]@{}
+
+        if ($groupMembers.'@odata.type' -eq '#microsoft.graph.group') {
+            $groupAugmented = [PSCustomObject]@{
+                Id     = $group.id
+                Name   = $group.displayName
+                Groups = $groupMembers
+            }
         }
 
-        [void]$groupsWithMembers.Add($groupAugmented)
-    }
+        if ($groupMembers.'@odata.type' -eq '#microsoft.graph.user') {
+            $groupAugmented = [PSCustomObject]@{
+                Id    = $group.id
+                Name  = $group.displayName
+                Users = $groupMembers
+            }
+        }
 
-    Write-Information "Successfully retrieved group memberships for each group. Result count: $($groupsWithMembers.Users.Count)"    
+        if ($groupAugmented.Id -ne $null) {
+            [void]$groupsWithMembers.Add($groupAugmented)      
+        }
+    }
+    
+    Write-Information "Successfully retrieved group memberships for each group. Result count: $($groupsWithMembers.Users.Count)"  
 }
 catch {
     $ex = $PSItem
@@ -592,6 +636,8 @@ catch {
 Export-Clixml -Path "$($exportPath)groupsWithMembers.xml" -InputObject $groupsWithMembers
 $groupsWithMembers = Import-Clixml -Path "$($exportPath)groupsWithMembers.xml"
 #endegion Retrieve the membership of groups, requires fetch per group
+
+$groupsWithMembersHashTable = $groupsWithMembers | Group-Object "id" -AsHashTable
 
 #region Transform group memberships into users with memberOf
 $usersWithMemberOf = New-Object System.Collections.ArrayList
@@ -646,8 +692,8 @@ $personsWithoutPermissions = [System.Collections.ArrayList]::new()
 foreach ($person in $expandedPersons) {
     $personCorrelationProperty = $personCorrelationAttribute.replace(".", "")
     $personCorrelationValue = $person.$personCorrelationProperty
-    $person | Add-Member -MemberType NoteProperty -Name 'isActive' -Value '' -Force           
-    
+    $person | Add-Member -MemberType NoteProperty -Name 'isActive' -Value '' -Force  
+        
     # Check if the contract of the person is active
     $today = Get-Date
     
@@ -684,7 +730,7 @@ foreach ($person in $expandedPersons) {
         [void]$personsWithoutUser.Add($personWithoutUserObject)
         continue; 
     }
-
+    
     $permissions = $usersWithMemberOf[$user.id]
 
     if ($null -eq $permissions) { 
@@ -753,6 +799,11 @@ foreach ($person in $expandedPersons) {
             DepartmentExternalID  = $person.departmentId + "|" + $person.departmentCode + "|" + $person.externalId
         }
 
+        if ($includeNestedGroupMemberships -eq $true) {
+            $record | Add-Member -MemberType NoteProperty -Name "isNested" -Value $permission.isNested -Force
+            $record | Add-Member -MemberType NoteProperty -Name "parentGroup" -Value $permission.parentGroup -Force
+        }
+
         if ($personPropertiesToInclude) {
             foreach ($personPropertyToInclude in $personPropertiesToInclude) {
                 $personProperty = '$person.' + $personPropertyToInclude.replace(".", "")
@@ -769,6 +820,53 @@ foreach ($person in $expandedPersons) {
         }
 
         [void]$personPermissions.Add($record)
+    }
+
+    #add dummy group
+    if ($addDummyGroup -eq $true) {
+        $dummyRecord = [PSCustomObject]@{
+            source                = $person.source
+            externalId            = $person.externalId
+            displayName           = $person.displayName
+            departmentId          = $person.departmentId
+            departmentCode        = $person.departmentCode
+            departmentDescription = $person.departmentDescription
+            titleId               = $person.titleId
+            titleCode             = $person.titleCode
+            titleDescription      = $person.titleDescription
+            contractIsPrimary     = $person.contractIsPrimary
+            startDate             = $person.startDate
+            endDate               = $person.endDate
+            isActive              = $person.isActive
+            userName              = $user.userPrincipalName
+            isEnabled             = $user.accountEnabled
+            permission            = "Total"
+            permissionType        = "Dummy group"
+            inEvaluation          = $false
+            isGranted             = $false
+            FunctieExternalID     = $person.titleId + "|" + $person.titleCode + "|" + $person.externalId
+            DepartmentExternalID  = $person.departmentId + "|" + $person.departmentCode + "|" + $person.externalId
+        }
+        if ($includeNestedGroupMemberships -eq $true) {
+            $dummyRecord | Add-Member -MemberType NoteProperty -Name "isNested" -Value $false -Force
+            $dummyRecord | Add-Member -MemberType NoteProperty -Name "parentGroup" -Value $null -Force
+        }
+
+        if ($personPropertiesToInclude) {
+            foreach ($personPropertyToInclude in $personPropertiesToInclude) {
+                $personProperty = '$person.' + $personPropertyToInclude.replace(".", "")
+                $personPropertyValue = ($personProperty | Invoke-Expression) 
+                $dummyRecord | Add-Member -MemberType NoteProperty -Name $personPropertyToInclude.replace(".", "") -Value $personPropertyValue -Force
+            }
+        }
+        if ($contractPropertiesToInclude) {
+            foreach ($contractPropertyToInclude in $contractPropertiesToInclude) {
+                $contractProperty = '$person.' + $contractPropertyToInclude.replace(".", "")
+                $contractPropertyValue = ($contractProperty | Invoke-Expression) 
+                $dummyRecord | Add-Member -MemberType NoteProperty -Name $contractPropertyToInclude.replace(".", "") -Value $contractPropertyValue -Force
+            }
+        }
+        [void]$personPermissions.Add($dummyRecord)
     }
 }
 
