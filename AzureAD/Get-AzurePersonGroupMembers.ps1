@@ -46,8 +46,8 @@ $evaluationPermissionTypeName = "Group Membership"
 $grantedEntitlementsCsv = $exportPath + "Entitlements.csv"
 # The name of the system on which to check the permissions in the granted entitlements (Required when using the entitlements report)
 $entitlementsSystemName = "Microsoft Azure AD"
-# The name of the permission type on which to check the permissions in the granted entitlements (Required when using the entitlements report) (Default for Azure AD is: Group Membership)
-$entitlementsPermissionTypeName = "Group Membership"
+# The name(s) of the permission type on which to check the permissions in the granted entitlements (Required when using the entitlements report) (Default for Azure AD is: Group Membership)
+$entitlementsPermissionTypeNames = @("Permission - Security Group", "Permission - Microsoft 365 Group")
 
 # The attribute used to correlate a person to an account
 $personCorrelationAttribute = "externalId" # or e.g. "externalId"
@@ -58,7 +58,7 @@ $vaultJson = $exportPath + "vault.json"
 # Specify the Person fields from the HelloID Vault export to include in the report (These have to match the exact name from he Vault.json export) - Must always contains personCorrelationAttribute!
 $personPropertiesToInclude = @($personCorrelationAttribute, "source.displayname", "custom.locatie")
 # Specify the Contracts fields from the HelloID Vault export to include in the report (These have to match the exact name from he Vault.json export)
-$contractPropertiesToInclude = @("costCenter.displayname", "custom.locatie", "Costcenter.name")
+$contractPropertiesToInclude = @("costCenter.externalId", "custom.locatie", "Costcenter.name")
 
 # Set TLS to accept TLS, TLS 1.1 and TLS 1.2
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls12
@@ -671,13 +671,17 @@ if (-not[string]::IsNullOrEmpty($evaluationReportCsv)) {
 if (-not[string]::IsNullOrEmpty($grantedEntitlementsCsv)) {
     Write-Information "Gathering data from granted entitlements export..." -InformationAction Continue
     $entitlementsReport = Import-Csv -Path $grantedEntitlementsCsv -Delimiter "," -Encoding UTF8
-    $entitlementsGranted = $entitlementsReport | Where-Object { $_.System -eq $entitlementsSystemName -and $_.EntitlementName -Like "$entitlementsPermissionTypeName - *" }
-
+    $entitlementsGranted = $entitlementsReport | Where-Object { $_.System -eq $entitlementsSystemName -and $_.EntitlementName -Like "Permission - *" }
+ 
     # Add GroupName to evaluation since we need to match to the correct groups
     $entitlementsGranted | Add-Member -MemberType NoteProperty -Name "GroupName" -Value $null -Force
     $entitlementsGranted | ForEach-Object {
-        # Replace the permission type name so the name matches the actual group in Target system
-        $_.GroupName = $_.EntitlementName -replace "$entitlementsPermissionTypeName - "
+        foreach ($entitlementsPermissionTypeName in $entitlementsPermissionTypeNames) {
+            if ($_.EntitlementName -like "$entitlementsPermissionTypeName - *") {
+                # Replace the permission type name so the name matches the actual group in Target system
+                $_.GroupName = $_.EntitlementName -replace "$entitlementsPermissionTypeName - "
+            }
+        }
     }
 
     # Transform Evaluation Report into persons with entitlements
