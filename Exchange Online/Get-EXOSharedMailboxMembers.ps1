@@ -11,7 +11,7 @@
     Version 1.0 - RS - initial release (inclduing status active for the employee and support for no startdate per employee)
     Version 1.1 - JS - Added reporting for persons with no correlation attribute, persons with no account or accounts with no permissions
     Version 1.2 - RH - Added dummy group option
-    Version 1.2.1 - JS - Fix column 'S tatus' is removed from export 'entilements.csv'
+    Version 1.2.1 - JS - Fix column 'Status' is removed from export 'entilements.csv'
 #>
 
 # Specify whether to output the logging
@@ -28,8 +28,8 @@ $AADAppSecret = "<AZURE_APP_SECRET>"
 # Toggle to include nested groupmemberships in Shared Mailboxes (up to a maximum of 1 layer deep)
 $includeNestedGroupMemberships = $true # or $false
 
-# Toggle to add dummy group to result for each person
-$addDummyGroup = $true # or $false
+# Toggle to add dummy permission to result for each person
+$addDummyPermission = $true # or $false
 
 ## Replace path with your path for vault.json, Evaluation.csv and entitlements.csv.
 ## Make sure the exportPath contains a trailing \ in Windows or / in Unix/MacOS environments
@@ -48,7 +48,7 @@ $evaluationPermissionTypeName = "Permission"
 # The names of the permissions that the HelloID Provisions target systems grants
 # Note: in HelloID Provisioning we mainly grant the Full Access & Send As within a single permission, but this can differ.
 # Change this accordingly to your HelloID Provisioning configuration
-$systemPermissionOptions = @("Full Access", "Send As") # Supported options: "Full Access","Send As","Send On Behalf"
+$systemPermissionOptions = @("Full Access", "Send As", "Send On Behalf") # Supported options: "Full Access","Send As","Send On Behalf"
 
 # Optionally, specifiy the parameters below when you want to check the groups against a granted entitlements report
 # The location of the Granted Entitlements Csv (needs to be manually exported from a HelloID Provisioning Granted Entitlements).
@@ -833,6 +833,60 @@ foreach ($person in $expandedPersons) {
 
     if ($null -ne $personsWithGrantedEntitlements) { $grantedEntitlements = $personsWithGrantedEntitlements[$person.DisplayName] }
 
+
+    # Create record(s) for Dummy permission
+    foreach ($systemPermissionOption in $systemPermissionOptions) {
+        
+        if ($addDummyPermission -eq $true) {
+            $dummyRecord = [PSCustomObject]@{
+                source                = $person.source
+                externalId            = $person.externalId
+                displayName           = $person.displayName
+                departmentId          = $person.departmentId
+                departmentCode        = $person.departmentCode
+                departmentDescription = $person.departmentDescription
+                titleId               = $person.titleId
+                titleCode             = $person.titleCode
+                titleDescription      = $person.titleDescription
+                contractIsPrimary     = $person.contractIsPrimary
+                startDate             = $person.startDate
+                endDate               = $person.endDate
+                isActive              = $person.isActive
+                userName              = $user.userPrincipalName
+                isEnabled             = $user.accountEnabled
+                mailboxUPN            = "Dummy@dummy.com"
+                mailboxName           = "Dummy"
+                mailboxDisplayName    = "Dummy"
+                permissionType        = $systemPermissionOption
+                inEvaluation          = $false
+                isGranted             = $false
+                FunctieExternalID     = $person.titleId + "|" + $person.titleCode + "|" + $person.externalId
+                DepartmentExternalID  = $person.departmentId + "|" + $person.departmentCode + "|" + $person.externalId
+            }
+        
+            if ($includeNestedGroupMemberships -eq $true) {
+                $dummyRecord | Add-Member -MemberType NoteProperty -Name "isNested" -Value $false -Force
+                $dummyRecord | Add-Member -MemberType NoteProperty -Name "parentGroup" -Value $null -Force
+            }
+        
+            if ($personPropertiesToInclude) {
+                foreach ($personPropertyToInclude in $personPropertiesToInclude) {
+                    $personProperty = '$person.' + $personPropertyToInclude.replace(".", "")
+                    $personPropertyValue = ($personProperty | Invoke-Expression) 
+                    $dummyRecord | Add-Member -MemberType NoteProperty -Name $personPropertyToInclude.replace(".", "") -Value $personPropertyValue -Force
+                }
+            }
+            if ($contractPropertiesToInclude) {
+                foreach ($contractPropertyToInclude in $contractPropertiesToInclude) {
+                    $contractProperty = '$person.' + $contractPropertyToInclude.replace(".", "")
+                    $contractPropertyValue = ($contractProperty | Invoke-Expression) 
+                    $dummyRecord | Add-Member -MemberType NoteProperty -Name $contractPropertyToInclude.replace(".", "") -Value $contractPropertyValue -Force
+                }
+            }
+            [void]$personPermissions.Add($dummyRecord)
+        }
+    }
+
     # Full Access
     $fullAccessPermissions = $null
     $fullAccessPermissions = $fullAccessUsers | Where-Object { $user.userPrincipalName -in $_.UserUserPrincipalName }
@@ -1069,59 +1123,6 @@ foreach ($person in $expandedPersons) {
         }
 
         [void]$personPermissions.Add($record)
-    }
-
-    foreach ($systemPermissionOption in $systemPermissionOptions) {
-
-        #add dummy group
-        if ($addDummyGroup -eq $true) {
-            $dummyRecord = [PSCustomObject]@{
-                source                = $person.source
-                externalId            = $person.externalId
-                displayName           = $person.displayName
-                departmentId          = $person.departmentId
-                departmentCode        = $person.departmentCode
-                departmentDescription = $person.departmentDescription
-                titleId               = $person.titleId
-                titleCode             = $person.titleCode
-                titleDescription      = $person.titleDescription
-                contractIsPrimary     = $person.contractIsPrimary
-                startDate             = $person.startDate
-                endDate               = $person.endDate
-                isActive              = $person.isActive
-                userName              = $user.userPrincipalName
-                isEnabled             = $user.accountEnabled
-                mailboxUPN            = "Dummy@dummy.com"
-                mailboxName           = "Dummy"
-                mailboxDisplayName    = "Dummy group"
-                permissionType        = $systemPermissionOption
-                inEvaluation          = $false
-                isGranted             = $false
-                FunctieExternalID     = $person.titleId + "|" + $person.titleCode + "|" + $person.externalId
-                DepartmentExternalID  = $person.departmentId + "|" + $person.departmentCode + "|" + $person.externalId
-            }
-        
-            if ($includeNestedGroupMemberships -eq $true) {
-                $dummyRecord | Add-Member -MemberType NoteProperty -Name "isNested" -Value $false -Force
-                $dummyRecord | Add-Member -MemberType NoteProperty -Name "parentGroup" -Value $null -Force
-            }
-        
-            if ($personPropertiesToInclude) {
-                foreach ($personPropertyToInclude in $personPropertiesToInclude) {
-                    $personProperty = '$person.' + $personPropertyToInclude.replace(".", "")
-                    $personPropertyValue = ($personProperty | Invoke-Expression) 
-                    $dummyRecord | Add-Member -MemberType NoteProperty -Name $personPropertyToInclude.replace(".", "") -Value $personPropertyValue -Force
-                }
-            }
-            if ($contractPropertiesToInclude) {
-                foreach ($contractPropertyToInclude in $contractPropertiesToInclude) {
-                    $contractProperty = '$person.' + $contractPropertyToInclude.replace(".", "")
-                    $contractPropertyValue = ($contractProperty | Invoke-Expression) 
-                    $dummyRecord | Add-Member -MemberType NoteProperty -Name $contractPropertyToInclude.replace(".", "") -Value $contractPropertyValue -Force
-                }
-            }
-            [void]$personPermissions.Add($dummyRecord)
-        }
     }
 }
 
