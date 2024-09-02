@@ -11,6 +11,7 @@
     Version 1.0 - initial release
     Version 1.1 - added reporting for persons with no correlation attribute, persons with no account or accounts with no permissions
     Version 1.1.1 - fix column 'Status' is removed from export 'entilements.csv'
+    Version 1.1.2 - fix: calculate dummy permission even if person has no other permissions
 #>
 # Specify whether to output the verbose logging
 #$verboseLogging = $false
@@ -455,42 +456,6 @@ foreach ($person in $expandedPersons) {
 
     $user = $usersGrouped[$personCorrelationValue]
 
-    if ($null -eq $user) { 
-        Write-Verbose "No user found where $($userCorrelationAttribute) = $($personCorrelationValue) for person $($person.displayName)"
-        $personWithoutUserObject = [PSCustomObject]@{
-            "Person displayname"          = $person.displayName
-            "Person externalId"           = $person.externalId
-            "Person is active"            = $person.isActive
-            "Person correlation property" = $personCorrelationProperty
-            "Person correlation value"    = "$($personCorrelationValue)"
-        }
-        [void]$personsWithoutUser.Add($personWithoutUserObject)
-        continue; 
-    }
-
-    $permissions = $usersWithMemberOf["$($user.ObjectGUID)"]
-
-    if ($null -eq $permissions) { 
-        Write-Verbose "No permission(s) found where Userguid = $($user.ObjectGUID) for person $($person.displayName)"
-        $personWithoutPermissionsObject = [PSCustomObject]@{
-            "Person displayname"          = $person.displayName
-            "Person externalId"           = $person.externalId
-            "Person is active"            = $person.isActive
-            "Person correlation property" = $personCorrelationProperty
-            "Person correlation value"    = "$($personCorrelationValue)"
-            "User ID"                     = "$($user.id)"
-        }
-        
-        [void]$personsWithoutPermissions.Add($personWithoutPermissionsObject)
-        continue; 
-    }
-
-    # Get evaluated entitlements for person
-    if ($null -ne $evaluatedPersonsWithEntitlement) { $evaluatedEntitlements = $evaluatedPersonsWithEntitlement[$person.DisplayName] }
-
-    # Get granted entitlements for person
-    if ($null -ne $personsWithGrantedEntitlements) { $grantedEntitlements = $personsWithGrantedEntitlements[$person.DisplayName] }
-
     # Create record for Dummy permission
     if ($addDummyPermission -eq $true) {
         $dummyRecord = [PSCustomObject]@{
@@ -541,6 +506,42 @@ foreach ($person in $expandedPersons) {
         }
         [void]$personPermissions.Add($dummyRecord)
     }
+
+    if ($null -eq $user) { 
+        Write-Verbose "No user found where $($userCorrelationAttribute) = $($personCorrelationValue) for person $($person.displayName)"
+        $personWithoutUserObject = [PSCustomObject]@{
+            "Person displayname"          = $person.displayName
+            "Person externalId"           = $person.externalId
+            "Person is active"            = $person.isActive
+            "Person correlation property" = $personCorrelationProperty
+            "Person correlation value"    = "$($personCorrelationValue)"
+        }
+        [void]$personsWithoutUser.Add($personWithoutUserObject)
+        continue; 
+    }
+
+    $permissions = $usersWithMemberOf["$($user.ObjectGUID)"]
+
+    if ($null -eq $permissions) { 
+        Write-Verbose "No permission(s) found where Userguid = $($user.ObjectGUID) for person $($person.displayName)"
+        $personWithoutPermissionsObject = [PSCustomObject]@{
+            "Person displayname"          = $person.displayName
+            "Person externalId"           = $person.externalId
+            "Person is active"            = $person.isActive
+            "Person correlation property" = $personCorrelationProperty
+            "Person correlation value"    = "$($personCorrelationValue)"
+            "User ID"                     = "$($user.id)"
+        }
+        
+        [void]$personsWithoutPermissions.Add($personWithoutPermissionsObject)
+        continue; 
+    }
+
+    # Get evaluated entitlements for person
+    if ($null -ne $evaluatedPersonsWithEntitlement) { $evaluatedEntitlements = $evaluatedPersonsWithEntitlement[$person.DisplayName] }
+
+    # Get granted entitlements for person
+    if ($null -ne $personsWithGrantedEntitlements) { $grantedEntitlements = $personsWithGrantedEntitlements[$person.DisplayName] }
 
     foreach ($permission in $permissions) {
         $group = $groupsGrouped["$($permission.groupGuid)"]
