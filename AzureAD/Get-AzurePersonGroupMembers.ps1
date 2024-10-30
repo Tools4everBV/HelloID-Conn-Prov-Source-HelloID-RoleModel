@@ -12,6 +12,7 @@
     Version 1.1 (JS) - added reporting for persons with no correlation attribute, persons with no account or accounts with no permissions
     Version 1.2 (RH) - added nesting support
     Version 1.2.1 (JS) - fix column 'Status' is removed from export 'entilements.csv'
+    Version 1.2.2 (JS) - fix: calculate dummy permission even if person has no other permissions
 #>
 # Specify whether to output the logging
 $VerbosePreference = 'SilentlyContinue'
@@ -45,9 +46,9 @@ $evaluationPermissionTypeName = "Group Membership"
 # The location of the Granted Entitlements Csv (needs to be manually exported from a HelloID Provisioning Granted Entitlements).
 $grantedEntitlementsCsv = $exportPath + "Entitlements.csv"
 # The name of the system on which to check the permissions in the granted entitlements (Required when using the entitlements report)
-$entitlementsSystemName = "Microsoft Azure AD"
-# The name of the permission type on which to check the permissions in the granted entitlements (Required when using the entitlements report) (Default for Azure AD is: Group Membership)
-$entitlementsPermissionTypeName = "Group Membership"
+$entitlementsSystemName = "Microsoft Entra ID"
+# The name(s) of the permission type on which to check the permissions in the granted entitlements (Required when using the entitlements report) (Default for Azure AD is: Group Membership)
+$entitlementsPermissionTypeNames = @("Permission - Security Group", "Permission - M365 Group")
 
 # The attribute used to correlate a person to an account
 $personCorrelationAttribute = "externalId" # or e.g. "externalId"
@@ -56,9 +57,9 @@ $userCorrelationAttribute = "employeeId" # or e.g. "userAttributes.EmployeeID"
 # The location of the Vault export in JSON format (needs to be manually exported from a HelloID Provisioning snapshot).
 $vaultJson = $exportPath + "vault.json"
 # Specify the Person fields from the HelloID Vault export to include in the report (These have to match the exact name from he Vault.json export) - Must always contains personCorrelationAttribute!
-$personPropertiesToInclude = @($personCorrelationAttribute, "source.displayname", "custom.locatie")
+$personPropertiesToInclude = @($personCorrelationAttribute, "source.displayname")
 # Specify the Contracts fields from the HelloID Vault export to include in the report (These have to match the exact name from he Vault.json export)
-$contractPropertiesToInclude = @("costCenter.displayname", "custom.locatie", "Costcenter.name")
+$contractPropertiesToInclude = @("costCenter.externalId", "Costcenter.name")
 
 # Set TLS to accept TLS, TLS 1.1 and TLS 1.2
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls12
@@ -671,13 +672,17 @@ if (-not[string]::IsNullOrEmpty($evaluationReportCsv)) {
 if (-not[string]::IsNullOrEmpty($grantedEntitlementsCsv)) {
     Write-Information "Gathering data from granted entitlements export..." -InformationAction Continue
     $entitlementsReport = Import-Csv -Path $grantedEntitlementsCsv -Delimiter "," -Encoding UTF8
-    $entitlementsGranted = $entitlementsReport | Where-Object { $_.System -eq $entitlementsSystemName -and $_.EntitlementName -Like "$entitlementsPermissionTypeName - *" }
-
+    $entitlementsGranted = $entitlementsReport | Where-Object { $_.System -eq $entitlementsSystemName -and $_.EntitlementName -Like "Permission - *" }
+ 
     # Add GroupName to evaluation since we need to match to the correct groups
     $entitlementsGranted | Add-Member -MemberType NoteProperty -Name "GroupName" -Value $null -Force
     $entitlementsGranted | ForEach-Object {
-        # Replace the permission type name so the name matches the actual group in Target system
-        $_.GroupName = $_.EntitlementName -replace "$entitlementsPermissionTypeName - "
+        foreach ($entitlementsPermissionTypeName in $entitlementsPermissionTypeNames) {
+            if ($_.EntitlementName -like "$entitlementsPermissionTypeName - *") {
+                # Replace the permission type name so the name matches the actual group in Target system
+                $_.GroupName = $_.EntitlementName -replace "$entitlementsPermissionTypeName - "
+            }
+        }
     }
 
     # Transform Evaluation Report into persons with entitlements
@@ -733,6 +738,53 @@ foreach ($person in $expandedPersons) {
     }
     
     $permissions = $usersWithMemberOf[$user.id]
+    
+    #add dummy group
+    if ($addDummyGroup -eq $true) {
+        $dummyRecord = [PSCustomObject]@{
+            source                = $person.source
+            externalId            = $person.externalId
+            displayName           = $person.displayName
+            departmentId          = $person.departmentId
+            departmentCode        = $person.departmentCode
+            departmentDescription = $person.departmentDescription
+            titleId               = $person.titleId
+            titleCode             = $person.titleCode
+            titleDescription      = $person.titleDescription
+            contractIsPrimary     = $person.contractIsPrimary
+            startDate             = $person.startDate
+            endDate               = $person.endDate
+            isActive              = $person.isActive
+            userName              = $user.userPrincipalName
+            isEnabled             = $user.accountEnabled
+            permission            = "Total"
+            permissionType        = "Dummy group"
+            inEvaluation          = $false
+            isGranted             = $false
+            FunctieExternalID     = $person.titleId + "|" + $person.titleCode + "|" + $person.externalId
+            DepartmentExternalID  = $person.departmentId + "|" + $person.departmentCode + "|" + $person.externalId
+        }
+        if ($includeNestedGroupMemberships -eq $true) {
+            $dummyRecord | Add-Member -MemberType NoteProperty -Name "isNested" -Value $false -Force
+            $dummyRecord | Add-Member -MemberType NoteProperty -Name "parentGroup" -Value $null -Force
+        }
+
+        if ($personPropertiesToInclude) {
+            foreach ($personPropertyToInclude in $personPropertiesToInclude) {
+                $personProperty = '$person.' + $personPropertyToInclude.replace(".", "")
+                $personPropertyValue = ($personProperty | Invoke-Expression) 
+                $dummyRecord | Add-Member -MemberType NoteProperty -Name $personPropertyToInclude.replace(".", "") -Value $personPropertyValue -Force
+            }
+        }
+        if ($contractPropertiesToInclude) {
+            foreach ($contractPropertyToInclude in $contractPropertiesToInclude) {
+                $contractProperty = '$person.' + $contractPropertyToInclude.replace(".", "")
+                $contractPropertyValue = ($contractProperty | Invoke-Expression) 
+                $dummyRecord | Add-Member -MemberType NoteProperty -Name $contractPropertyToInclude.replace(".", "") -Value $contractPropertyValue -Force
+            }
+        }
+        [void]$personPermissions.Add($dummyRecord)
+    }
 
     if ($null -eq $permissions) { 
         Write-Verbose "No permission(s) found where Userguid = $($user.id) for person $($person.displayName)"
@@ -821,53 +873,6 @@ foreach ($person in $expandedPersons) {
         }
 
         [void]$personPermissions.Add($record)
-    }
-
-    #add dummy group
-    if ($addDummyGroup -eq $true) {
-        $dummyRecord = [PSCustomObject]@{
-            source                = $person.source
-            externalId            = $person.externalId
-            displayName           = $person.displayName
-            departmentId          = $person.departmentId
-            departmentCode        = $person.departmentCode
-            departmentDescription = $person.departmentDescription
-            titleId               = $person.titleId
-            titleCode             = $person.titleCode
-            titleDescription      = $person.titleDescription
-            contractIsPrimary     = $person.contractIsPrimary
-            startDate             = $person.startDate
-            endDate               = $person.endDate
-            isActive              = $person.isActive
-            userName              = $user.userPrincipalName
-            isEnabled             = $user.accountEnabled
-            permission            = "Total"
-            permissionType        = "Dummy group"
-            inEvaluation          = $false
-            isGranted             = $false
-            FunctieExternalID     = $person.titleId + "|" + $person.titleCode + "|" + $person.externalId
-            DepartmentExternalID  = $person.departmentId + "|" + $person.departmentCode + "|" + $person.externalId
-        }
-        if ($includeNestedGroupMemberships -eq $true) {
-            $dummyRecord | Add-Member -MemberType NoteProperty -Name "isNested" -Value $false -Force
-            $dummyRecord | Add-Member -MemberType NoteProperty -Name "parentGroup" -Value $null -Force
-        }
-
-        if ($personPropertiesToInclude) {
-            foreach ($personPropertyToInclude in $personPropertiesToInclude) {
-                $personProperty = '$person.' + $personPropertyToInclude.replace(".", "")
-                $personPropertyValue = ($personProperty | Invoke-Expression) 
-                $dummyRecord | Add-Member -MemberType NoteProperty -Name $personPropertyToInclude.replace(".", "") -Value $personPropertyValue -Force
-            }
-        }
-        if ($contractPropertiesToInclude) {
-            foreach ($contractPropertyToInclude in $contractPropertiesToInclude) {
-                $contractProperty = '$person.' + $contractPropertyToInclude.replace(".", "")
-                $contractPropertyValue = ($contractProperty | Invoke-Expression) 
-                $dummyRecord | Add-Member -MemberType NoteProperty -Name $contractPropertyToInclude.replace(".", "") -Value $contractPropertyValue -Force
-            }
-        }
-        [void]$personPermissions.Add($dummyRecord)
     }
 }
 

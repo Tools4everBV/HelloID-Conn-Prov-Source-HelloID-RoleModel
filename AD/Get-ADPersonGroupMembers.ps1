@@ -11,16 +11,21 @@
     Version 1.0 - initial release
     Version 1.1 - added reporting for persons with no correlation attribute, persons with no account or accounts with no permissions
     Version 1.1.1 - fix column 'Status' is removed from export 'entilements.csv'
+    Version 1.1.2 - fix: calculate dummy permission even if person has no other permissions
 #>
 # Specify whether to output the verbose logging
 #$verboseLogging = $false
 
-# Toggle to include nested groupmemberships (up to a maximum of 1 layer deep)
+# Toggle to include nested groupmemberships
 $includeNestedGroupMemberships = $true # or $false
+$nestedGroupMembershipsMaxDepth = 5 # 0 will result in no nested groupmemberships
+
+# Toggle to add dummy permission to result for each person
+$addDummyPermission = $true # or $false
 
 # Replace path with your path for vault.json, Evaluation.csv and entitlements.csv.
 # Make sure the exportPath contains a trailing \ in Windows or / in Unix/MacOS environments
-$exportPath = "C:\HelloID\Provisioning\RoleMining_export\PersonGroupMembers\"
+$exportPath = "C:\HelloID\RoleminingAD\"
 
 # Optionally, specifiy the parameters below when you want to check the groups against an evaluation report
 # The location of the Evaluation Report Csv (needs to be manually exported from a HelloID Provisioning evaluation).
@@ -45,108 +50,9 @@ $userCorrelationAttribute = "EmployeeID"
 # The location of the Vault export in JSON format (needs to be manually exported from a HelloID Provisioning snapshot).
 $vaultJson = $exportPath + "vault.json"
 # Specify the Person fields from the HelloID Vault export to include in the report (These have to match the exact name from he Vault.json export) - Must always contains personCorrelationAttribute!
-$personPropertiesToInclude = @($personCorrelationAttribute, "source.displayname", "custom.locatie")
+$personPropertiesToInclude = @($personCorrelationAttribute, "source.displayname")
 # Specify the Contracts fields from the HelloID Vault export to include in the report (These have to match the exact name from he Vault.json export)
-$contractPropertiesToInclude = @("costCenter.displayname", "Costcenter.name", "custom.locatie")
-
-function Get-ADGroupsWithMembers {
-    param(
-        [parameter(Mandatory = $true)]$Groups,
-        [parameter(Mandatory = $true)]$Users,
-        [parameter(Mandatory = $true)][ref]$groupsWithMembers
-    )
-
-    try {
-
-        Write-Information "Retrieving group memberships for each AD group..." -InformationAction Continue
-
-        # Retrieve the membership of groups,  
-        foreach ($group in $groups) {
-    
-            # Retrieve members per group
-            $usersGrouped = New-Object System.Collections.ArrayList  
-            $groupsGrouped = New-Object System.Collections.ArrayList
-
-            $usersWithinGroup = Get-ADGroupMember -Identity $group.ObjectGUID          
-            
-            # Check if the member is an user or a group
-            foreach ($userWithinGroup in $usersWithinGroup) {
-                If ($userWithinGroup.objectClass -eq "user") {
-                    $userWithinGroup = $userWithinGroup.objectGUID.ToString()
-                
-                    [void]$usersGrouped.Add($userWithinGroup)
-                
-                }
-                elseif ($userWithinGroup.objectClass -eq "group") {
-                    $groupWithinGroup = $userWithinGroup.objectGUID.ToString()
-                
-                    [void]$groupsGrouped.Add($groupWithinGroup)
-                }
-            }
-                
-            $groupWithMembers = [PSCustomObject]@{
-                groupGuid = $group.ObjectGUID
-                name      = $group.Name
-                users     = $usersGrouped
-                groups    = $groupsGrouped
-            }
-                   
-            [void]$groupsWithMembers.Value.Add($groupWithMembers)
-        }
-    }
-    catch {
-        $groupsWithMembers.Value = $null
-        Write-Error $_.Exception
-    }
-}
-
-function Invoke-TransformMembershipsToMemberOf {
-    param(
-        [parameter(Mandatory = $true)]$GroupsWithMembers,
-        [parameter(Mandatory = $true)][ref]$usersWithMemberOf
-    )
-
-    try {
-        Write-Information "Transforming group memberships to users with memberOf..." -InformationAction Continue
-
-        foreach ($record in $GroupsWithMembers | Where-Object { ![String]::IsNullOrEmpty($_.users) } ) {
-            foreach ($userGuid in $record.users) {
-                $userWithMemberOf = [PSCustomObject]@{
-                    userGuid    = $userGuid
-                    memberOf    = $record.groupGuid
-                    isNested    = $false
-                    parentGroup = $null
-                }
-
-                [void]$usersWithMemberOf.Value.Add($userWithMemberOf)
-            }
-        }
-
-        if ($includeNestedGroupMemberships -eq $true) {
-            $usersWithMemberOfGrouped = $usersWithMemberOf.Value | Group-Object -Property memberOf -AsString -AsHashTable
-
-            foreach ($record in $GroupsWithMembers | Where-Object { ![String]::IsNullOrEmpty($_.groups) } ) {
-                foreach ($groupGuid in $record.groups) {
-                    foreach ($userGuid in $usersWithMemberOfGrouped[$groupGuid].userGuid) {
-                        $userWithMemberOf = [PSCustomObject]@{
-                            userGuid    = $userGuid
-                            groupGuid   = $groupGuid
-                            memberOf    = $record.groupGuid
-                            isNested    = $true
-                            parentGroup = $groupsGrouped[$groupGuid].Name
-                        }
-
-                        [void]$usersWithMemberOf.Value.Add($userWithMemberOf)
-                    }
-                }
-            }
-        }
-    }
-    catch {
-        $usersWithMemberOf.Value = $null
-        Write-Error $_.Exception
-    }
-}
+$contractPropertiesToInclude = @("costCenter.externalId", "Costcenter.name")
 
 function Expand-Persons {
     param(
@@ -260,9 +166,84 @@ function Expand-Persons {
 
             }
         }
+
+        Write-Information "Expanded persons with contracts. Result count: $(($ExpandedPersons.Value | Select-Object -Property displayName, source -Unique | Measure-Object).Count)" -InformationAction Continue
     }
     catch {
         Write-Error $_.Exception
+    }
+}
+
+function Get-NestedGroupMemberships {
+    param (
+        [Parameter(Mandatory = $true)]
+        [PSObject]$User,
+
+        [Parameter(Mandatory = $true)]
+        [PSObject]$Group,
+
+        [Parameter(Mandatory = $true)]
+        [System.Collections.ArrayList]$UsersWithMemberships,
+
+        [Parameter(Mandatory = $true)]
+        [Hashtable]$GroupsGroupedByDistinguishedName,
+
+        [Parameter(Mandatory = $true)]
+        [int]$CurrentDepth,
+
+        [Parameter(Mandatory = $true)]
+        [int]$MaxDepth
+    )
+
+    if ($CurrentDepth -gt $MaxDepth) {
+        return
+    }
+
+    foreach ($NestedGroup in $Group.MemberOf) {
+        # Get group object by distinguished name
+        $nestedGroupObject = $GroupsGroupedByDistinguishedName["$($NestedGroup)"]
+
+        if ($null -ne $nestedGroupObject) {
+            # Filter member for only groups and get group object by distinguished name
+            $memberGroups = [System.Collections.ArrayList]::new()
+            foreach ($nestedGroupMember in $nestedGroupObject.Member) {
+                if ($groupsGroupedByDistinguishedName.ContainsKey($nestedGroupMember)) {
+                    [void]$memberGroups.Add($groupsGroupedByDistinguishedName[$nestedGroupMember])
+                }
+            }
+
+            # Filter memberof for only groups and get group object by distinguished name
+            $memberOfGroups = [System.Collections.ArrayList]::new()
+            foreach ($nestedGroupMemberOf in $nestedGroupObject.MemberOf) {
+                if ($groupsGroupedByDistinguishedName.ContainsKey($nestedGroupMemberOf)) {
+                    [void]$memberOfGroups.Add($groupsGroupedByDistinguishedName[$nestedGroupMemberOf])
+                }
+            }
+
+            $NestedUserCustomObject = [PSCustomObject]@{
+                UserName         = $User.Name
+                UserGuid         = $User.ObjectGUID
+                GroupName        = $nestedGroupObject.Name
+                GroupGuid        = $nestedGroupObject.ObjectGUID
+                IsNested         = $true
+                "Member/Parent"  = $memberGroups.Name -join "|"
+                "MemberOf/Child" = $memberOfGroups.Name -join "|"
+            }
+
+            [void]$UsersWithMemberships.Add($NestedUserCustomObject)
+
+            # Recursively get nested group memberships
+            $NestedGroupMembershipsParams = @{
+                User                             = $User
+                Group                            = $NestedGroupObject
+                UsersWithMemberships             = $UsersWithMemberships
+                GroupsGroupedByDistinguishedName = $GroupsGroupedByDistinguishedName
+                CurrentDepth                     = $CurrentDepth + 1
+                MaxDepth                         = $MaxDepth
+            }
+
+            Get-NestedGroupMemberships @NestedGroupMembershipsParams
+        }
     }
 }
 
@@ -270,6 +251,7 @@ function Expand-Persons {
 Write-Information "Gathering persons..." -InformationAction Continue
 $snapshot = Get-Content -Path $vaultJson -Encoding UTF8 | ConvertFrom-Json
 $persons = $snapshot.Persons
+Write-Information "Gathered persons. Result count: $(($persons | Measure-Object).Count)" -InformationAction Continue
 
 # Expand persons with contracts
 $expandedPersons = New-Object System.Collections.ArrayList
@@ -278,26 +260,91 @@ Expand-Persons -Persons $snapshot.Persons ([ref]$ExpandedPersons)
 # Retrieve all users
 Write-Information "Gathering users..." -InformationAction Continue
 $users = New-Object System.Collections.ArrayList
-$users = Get-aduser -Filter { (ObjectClass -eq 'user') } -Properties DisplayName, EmployeeID, EmployeeNumber, MemberOf, SamAccountName, UserPrincipalName
+$users = Get-aduser -Filter { (ObjectClass -eq 'user') } -Properties Name, DisplayName, EmployeeID, EmployeeNumber, MemberOf, SamAccountName, UserPrincipalName, DistinguishedName
 $users = $users | Where-Object { $_.Enabled -eq $true }
 $users = $users | Where-Object { [String]::IsNullOrEmpty($_.($userCorrelationAttribute)) -eq $false }
 $usersGrouped = $users | Group-Object -Property $userCorrelationAttribute -AsString -AsHashTable
+Write-Information "Gathered users. Result count: $(($users | Measure-Object).Count)" -InformationAction Continue
 
 # Retrieve all groups
 Write-Information "Gathering groups..." -InformationAction Continue
 $groups = New-Object System.Collections.ArrayList
-$groups = Get-ADGroup -Filter * | Select-Object Name, ObjectGUID, ObjectClass, DistinguishedName
-$groups = $groups | Where-Object { $_.DistinguishedName -notmatch 'CN=Builtin' }
+$groups = Get-ADGroup -Filter * -Properties Name, ObjectGUID, ObjectClass, DistinguishedName, Member, MemberOf, whenChanged, whenCreated
+$groups = $groups | Where-Object { 
+    $_.DistinguishedName -notmatch 'CN=Builtin' -or $_.Name -eq 'Domain Users' 
+}
 $groupsGrouped = $groups | Group-Object -Property ObjectGUID -AsString -AsHashTable
+$groupsGroupedByDistinguishedName = $groups | Group-Object -Property DistinguishedName -AsString -AsHashTable
+Write-Information "Gathered groups. Result count: $(($groups | Measure-Object).Count)" -InformationAction Continue
 
-# Retrieve the membership of groups, requires fetch per group
-$groupsWithMembers = New-Object System.Collections.ArrayList
-Get-ADGroupsWithMembers -Groups $groups -Users $users ([ref]$groupsWithMembers)
+# Retrieve the membership of users, requires fetch per user
+try {
+    Write-Information "Retrieving group memberships for each AD user..." -InformationAction Continue
 
-# Transform group memberships into users with memberOf
-$usersWithMemberOf = New-Object System.Collections.ArrayList
-Invoke-TransformMembershipsToMemberOf -GroupsWithMembers $groupsWithMembers ([ref]$usersWithMemberOf)
-$usersWithMemberOf = $usersWithMemberOf | Group-Object -Property "userGuid" -AsString -AsHashTable
+    # Create list of all users with their group memberships
+    $UsersWithMemberships = [System.Collections.ArrayList]::new()
+
+    foreach ($User in $Users) {
+        foreach ($GroupMember in $User.MemberOf) {
+            if ($groupsGroupedByDistinguishedName.ContainsKey($GroupMember)) {
+                # Get group object by distinguished name
+                $GroupObject = $null
+                $GroupObject = $groupsGroupedByDistinguishedName["$($GroupMember)"]
+
+                # Filter member for only groups and get group object by distinguished name
+                $memberGroups = [System.Collections.ArrayList]::new()
+                foreach ($groupMember in $GroupObject.Member) {
+                    if ($groupsGroupedByDistinguishedName.ContainsKey($groupMember)) {
+                        [void]$memberGroups.Add($groupsGroupedByDistinguishedName["$groupMember"])
+                    }
+                }
+
+                # Filter memberof for only groups and get group object by distinguished name
+                $memberOfGroups = [System.Collections.ArrayList]::new()
+                foreach ($groupMemberOf in $GroupObject.MemberOf) {
+                    if ($groupsGroupedByDistinguishedName.ContainsKey($groupMemberOf)) {
+                        [void]$memberOfGroups.Add($groupsGroupedByDistinguishedName["$groupMemberOf"])
+                    }
+                }
+            
+                # Create custom object for user with group membership
+                $UserCustomObject = [PSCustomObject]@{
+                    UserName         = $User.Name
+                    UserGuid         = $User.ObjectGUID
+                    GroupName        = $GroupObject.Name
+                    GroupGuid        = $GroupObject.ObjectGUID
+                    IsNested         = $false
+                    "Member/Parent"  = $memberGroups.Name -join "|"
+                    "MemberOf/Child" = $memberOfGroups.Name -join "|"
+                }
+
+                # Add the custom object for user with group membership to list of all users with their group memberships
+                [void]$UsersWithMemberships.Add($UserCustomObject)
+
+                if ($IncludeNestedGroupMemberships -eq $true) {
+                    # Get nested group memberships
+                    $NestedGroupMembershipsParams = @{
+                        User                             = $User
+                        Group                            = $GroupObject
+                        UsersWithMemberships             = $UsersWithMemberships
+                        GroupsGroupedByDistinguishedName = $groupsGroupedByDistinguishedName
+                        CurrentDepth                     = 1
+                        MaxDepth                         = $nestedGroupMembershipsMaxDepth
+                    }
+
+                    Get-NestedGroupMemberships @NestedGroupMembershipsParams
+                }
+            }
+        }
+    }
+
+    Write-Information "Gathered group memberships for each AD user. Result count: $(($UsersWithMemberships | Measure-Object).Count)" -InformationAction Continue
+}
+catch {
+    Write-Error $_.Exception
+}
+
+$usersWithMemberOf = $UsersWithMemberships | Group-Object -Property "UserGuid" -AsString -AsHashTable
 
 $personPermissions = New-Object System.Collections.ArrayList
 
@@ -312,24 +359,19 @@ if (-not[string]::IsNullOrEmpty($evaluationReportCsv)) {
     $evaluationPermissions | ForEach-Object {
 
         # If Target system is AD, the entitlement contains the CannonicalName between brackets, so this needs some regex to filter this out
-        if ($_.System -eq "Microsoft Active Directory") {
-            # First apply regex to match for groups with brackets
-            $groupNameMatches = [regex]::Matches($_.EntitlementName, '\(.*?\)\)')
-            if (-not[String]::IsNullOrEmpty($groupNameMatches)) {
-                # If multiple brackets are found, additional actions are required to sanitize the groupname, such as replacing "))" with ")"
-                $groupName = (($groupNameMatches -split '/')[-1]).Replace("))", ")")
-                $_.GroupName = $groupName -replace "$evaluationPermissionTypeName - "
-            }
-            else {
-                # If no matches are found, apply regex to match for groups without brackets
-                $groupNameMatches = [regex]::Matches($_.EntitlementName, '\(.*?\)')
-                # If a match is found, additional actions are required to sanitize the groupname, such as removing the trailing ")"
-                $groupName = (($groupNameMatches -split '/')[-1]).Replace(")", "")
-                $_.GroupName = $groupName -replace "$evaluationPermissionTypeName - "
-            }
+        # First apply regex to match for groups with brackets
+        $groupNameMatches = [regex]::Matches($_.EntitlementName, '\(.*?\)\)')
+        if (-not[String]::IsNullOrEmpty($groupNameMatches)) {
+            # If multiple brackets are found, additional actions are required to sanitize the groupname, such as replacing "))" with ")"
+            $groupName = (($groupNameMatches -split '/')[-1]).Replace("))", ")")
+            $_.GroupName = $groupName -replace "$evaluationPermissionTypeName - "
         }
         else {
-            $_.GroupName = $_.EntitlementName -replace "$evaluationPermissionTypeName - "
+            # If no matches are found, apply regex to match for groups without brackets
+            $groupNameMatches = [regex]::Matches($_.EntitlementName, '\(.*?\)')
+            # If a match is found, additional actions are required to sanitize the groupname, such as removing the trailing ")"
+            $groupName = (($groupNameMatches -split '/')[-1]).Replace(")", "")
+            $_.GroupName = $groupName -replace "$evaluationPermissionTypeName - "
         }
     }
 
@@ -347,7 +389,6 @@ if (-not[string]::IsNullOrEmpty($grantedEntitlementsCsv)) {
     # Add GroupName to evaluation since we need to match to the correct groups
     $entitlementsGranted | Add-Member -MemberType NoteProperty -Name "GroupName" -Value $null -Force
     $entitlementsGranted | ForEach-Object {
-
         # If Target system is AD, the entitlement contains the CannonicalName between brackets, so this needs some regex to filter this out
         if ($_.System -eq "Microsoft Active Directory") {
             try {
@@ -415,6 +456,57 @@ foreach ($person in $expandedPersons) {
 
     $user = $usersGrouped[$personCorrelationValue]
 
+    # Create record for Dummy permission
+    if ($addDummyPermission -eq $true) {
+        $dummyRecord = [PSCustomObject]@{
+            source                = $person.source
+            externalId            = $person.externalId
+            displayName           = $person.displayName
+            departmentId          = $person.departmentId
+            departmentCode        = $person.departmentCode
+            departmentDescription = $person.departmentDescription
+            titleId               = $person.titleId
+            titleCode             = $person.titleCode
+            titleDescription      = $person.titleDescription
+            contractIsPrimary     = $person.contractIsPrimary
+            startDate             = ($person.startDate).ToString('yyyy-MM-dd')
+            endDate               = ($person.endDate).ToString('yyyy-MM-dd')
+            isActive              = $person.isActive
+            UPN                   = $user.UserPrincipalName
+            SamAccountName        = $user.SamAccountName
+            isEnabled             = $user.Enabled
+            permission            = "Dummy"
+            GroupWhenCreated      = $null
+            GroupWhenChanged      = $null
+            inEvaluation          = $false
+            isGranted             = $false
+            FunctieExternalID     = $person.titleId + "|" + $person.titleCode + "|" + $person.externalId
+            DepartmentExternalID  = $person.departmentId + "|" + $person.departmentCode + "|" + $person.externalId
+        }
+
+        if ($includeNestedGroupMemberships -eq $true) {
+            $dummyRecord | Add-Member -MemberType NoteProperty -Name "isNested" -Value $false -Force
+            $dummyRecord | Add-Member -MemberType NoteProperty -Name "Member/Parent" -Value $null -Force
+            $dummyRecord | Add-Member -MemberType NoteProperty -Name "MemberOf/Child"  -Value $null -Force
+        }
+
+        if ($personPropertiesToInclude) {
+            foreach ($personPropertyToInclude in $personPropertiesToInclude) {
+                $personProperty = '$person.' + $personPropertyToInclude.replace(".", "")
+                $personPropertyValue = ($personProperty | Invoke-Expression) 
+                $dummyRecord | Add-Member -MemberType NoteProperty -Name $personPropertyToInclude.replace(".", "") -Value $personPropertyValue -Force
+            }
+        }
+        if ($contractPropertiesToInclude) {
+            foreach ($contractPropertyToInclude in $contractPropertiesToInclude) {
+                $contractProperty = '$person.' + $contractPropertyToInclude.replace(".", "")
+                $contractPropertyValue = ($contractProperty | Invoke-Expression) 
+                $dummyRecord | Add-Member -MemberType NoteProperty -Name $contractPropertyToInclude.replace(".", "") -Value $contractPropertyValue -Force
+            }
+        }
+        [void]$personPermissions.Add($dummyRecord)
+    }
+
     if ($null -eq $user) { 
         Write-Verbose "No user found where $($userCorrelationAttribute) = $($personCorrelationValue) for person $($person.displayName)"
         $personWithoutUserObject = [PSCustomObject]@{
@@ -431,7 +523,7 @@ foreach ($person in $expandedPersons) {
     $permissions = $usersWithMemberOf["$($user.ObjectGUID)"]
 
     if ($null -eq $permissions) { 
-        Write-Verbose "No permission(s) found where Userguid = $($user.id) for person $($person.displayName)"
+        Write-Verbose "No permission(s) found where Userguid = $($user.ObjectGUID) for person $($person.displayName)"
         $personWithoutPermissionsObject = [PSCustomObject]@{
             "Person displayname"          = $person.displayName
             "Person externalId"           = $person.externalId
@@ -452,7 +544,7 @@ foreach ($person in $expandedPersons) {
     if ($null -ne $personsWithGrantedEntitlements) { $grantedEntitlements = $personsWithGrantedEntitlements[$person.DisplayName] }
 
     foreach ($permission in $permissions) {
-        $group = $groupsGrouped["$($permission.memberOf)"]
+        $group = $groupsGrouped["$($permission.groupGuid)"]
 
         if ($null -eq $group) { continue; }
         
@@ -490,6 +582,8 @@ foreach ($person in $expandedPersons) {
             SamAccountName        = $user.SamAccountName
             isEnabled             = $user.Enabled
             permission            = $group.name
+            GroupWhenCreated      = ($group.whenCreated).ToString('yyyy-MM-dd')
+            GroupWhenChanged      = ($group.whenChanged).ToString('yyyy-MM-dd')
             inEvaluation          = $inEvaluation
             isGranted             = $isGranted
             FunctieExternalID     = $person.titleId + "|" + $person.titleCode + "|" + $person.externalId
@@ -498,7 +592,8 @@ foreach ($person in $expandedPersons) {
 
         if ($includeNestedGroupMemberships -eq $true) {
             $record | Add-Member -MemberType NoteProperty -Name "isNested" -Value $permission.isNested -Force
-            $record | Add-Member -MemberType NoteProperty -Name "parentGroup" -Value $permission.parentGroup -Force
+            $record | Add-Member -MemberType NoteProperty -Name "Member/Parent" -Value $permission."Member/Parent" -Force
+            $record | Add-Member -MemberType NoteProperty -Name "MemberOf/Child"  -Value $permission."MemberOf/Child" -Force
         }
 
         if ($personPropertiesToInclude) {
@@ -522,17 +617,20 @@ foreach ($person in $expandedPersons) {
 
 #region security logging exports
 if (($personsWithoutCorrelationValue | Measure-Object).Count -gt 0) {
+    Write-Information "Exporting [$(($personsWithoutCorrelationValue | Measure-Object).Count)] personsWithoutCorrelationValue to CSV..." -InformationAction Continue
     $personsWithoutCorrelationValue | Export-Csv -Path "$($exportPath)personsWithoutCorrelationValue.csv" -Delimiter ";" -Encoding UTF8 -NoTypeInformation -Force
 }
 
 if (($personsWithoutUser | Measure-Object).Count -gt 0) {
+    Write-Information "Exporting [$(($personsWithoutUser | Measure-Object).Count)] personsWithoutUser to CSV..." -InformationAction Continue
     $personsWithoutUser | Export-Csv -Path "$($exportPath)personsWithoutUser.csv" -Delimiter ";" -Encoding UTF8 -NoTypeInformation -Force
 }
 
 if (($personsWithoutPermissions | Measure-Object).Count -gt 0) {
+    Write-Information "Exporting [$(($personsWithoutPermissions | Measure-Object).Count)] personsWithoutPermissions to CSV..." -InformationAction Continue
     $personsWithoutPermissions | Export-Csv -Path "$($exportPath)personsWithoutPermissions.csv" -Delimiter ";" -Encoding UTF8 -NoTypeInformation -Force
 }
 #endregion
 
-Write-Information "Exporting data to CSV..." -InformationAction Continue
+Write-Information "Exporting [$(($personPermissions | Measure-Object).Count)] personPermissions for [$(($personPermissions | Select-Object -Property displayName, source -Unique | Measure-Object).Count)] persons to CSV..." -InformationAction Continue
 $personPermissions | Export-Csv -Path "$($exportPath)personPermissions.csv" -Delimiter ";" -Encoding UTF8 -NoTypeInformation -Force
