@@ -32,7 +32,7 @@ $addDummyGroup = $true # or $false
 
 # Replace path with your path for vault.json, Evaluation.csv and entitlements.csv.
 # Make sure the exportPath contains a trailing \ in Windows or / in Unix/MacOS environments
-$exportPath = "C:\HelloID\Provisioning\RoleMining_export\PersonGroupMembers\"
+$exportPath = "C:\HelloID\RoleminingEntraID\"
 
 # Optionally, specifiy the parameters below when you want to check the groups against an evaluation report
 # The location of the Evaluation Report Csv (needs to be manually exported from a HelloID Provisioning evaluation).
@@ -65,6 +65,24 @@ $contractPropertiesToInclude = @("costCenter.externalId", "Costcenter.name")
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls12
 
 #region functions
+function Write-Information {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Message
+    )
+    
+    if ($portalBaseUrl -eq $null) {
+        # Use the standard Write-Information
+        Write-Host $Message
+       
+    }
+    else {
+        # Use HelloID logging
+        Hid-Write-Status -Message $Message -Event "Information"
+    }
+}
+
 function New-AuthorizationHeaders {
     [CmdletBinding()]
     [OutputType([System.Collections.Generic.Dictionary[[String], [String]]])]

@@ -54,6 +54,24 @@ $personPropertiesToInclude = @($personCorrelationAttribute, "source.displayname"
 # Specify the Contracts fields from the HelloID Vault export to include in the report (These have to match the exact name from he Vault.json export)
 $contractPropertiesToInclude = @("costCenter.externalId", "Costcenter.name")
 
+function Write-Information {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Message
+    )
+    
+    if ($portalBaseUrl -eq $null) {
+        # Use the standard Write-Information
+        Write-Host $Message
+       
+    }
+    else {
+        # Use HelloID logging
+        Hid-Write-Status -Message $Message -Event "Information"
+    }
+}
+
 function Expand-Persons {
     param(
         [parameter(Mandatory = $true)]$Persons,
