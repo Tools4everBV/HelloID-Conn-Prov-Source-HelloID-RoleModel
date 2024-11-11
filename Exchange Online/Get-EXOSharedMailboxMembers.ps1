@@ -800,7 +800,21 @@ $personsWithoutCorrelationValue = [System.Collections.ArrayList]::new()
 $personsWithoutUser = [System.Collections.ArrayList]::new()
 $personsWithoutPermissions = [System.Collections.ArrayList]::new()
 
+# Count the persons in expandedPersons
+$totalUsers = $expandedPersons.Count
+
+# Check if there are persons in totalUsers
+if ($totalUsers -eq 0) {
+    Write-information "No users to process."
+    return
+}
+
+# Log points the log the status of the script
+$logPoints = @([math]::Ceiling($totalUsers * 0.25), [math]::Ceiling($totalUsers * 0.50), [math]::Ceiling($totalUsers * 0.75))
+$counter = 0
+
 foreach ($person in $expandedPersons) {
+    $counter++
     $personCorrelationProperty = $personCorrelationAttribute.replace(".", "")
     $personCorrelationValue = $person.$personCorrelationProperty
     if ($null -eq $personCorrelationValue) {
@@ -1141,6 +1155,16 @@ foreach ($person in $expandedPersons) {
         }
 
         [void]$personPermissions.Add($record)
+    }
+    # Logging percentage of the script 
+    if ($counter -eq $logPoints[0]) {
+        Write-information "Status: 25% ($counter of $totalUsers) users processed."
+    }
+    elseif ($counter -eq $logPoints[1]) {
+        Write-information "Status: 50% ($counter of $totalUsers) users processed."
+    }
+    elseif ($counter -eq $logPoints[2]) {
+        Write-information "Status: 75% ($counter of $totalUsers) users processed."
     }
 }
 
