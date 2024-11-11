@@ -8,10 +8,6 @@
     Editor: Jeroen Smit
     Created At: 2023-08-22
     Last Edit: 2024-03-25
-    Version 1.0 - initial release
-    Version 1.1 - added reporting for persons with no correlation attribute, persons with no account or accounts with no permissions
-    Version 1.1.1 - fix column 'Status' is removed from export 'entilements.csv'
-    Version 1.1.2 - fix: calculate dummy permission even if person has no other permissions
 #>
 # Specify whether to output the verbose logging
 #$verboseLogging = $false
@@ -277,12 +273,20 @@ Expand-Persons -Persons $snapshot.Persons ([ref]$ExpandedPersons)
 
 # Retrieve all users
 Write-Information "Gathering users..." -InformationAction Continue
-$users = New-Object System.Collections.ArrayList
-$users = Get-aduser -Filter { (ObjectClass -eq 'user') } -Properties Name, DisplayName, EmployeeID, EmployeeNumber, MemberOf, SamAccountName, UserPrincipalName, DistinguishedName
-$users = $users | Where-Object { $_.Enabled -eq $true }
-$users = $users | Where-Object { [String]::IsNullOrEmpty($_.($userCorrelationAttribute)) -eq $false }
-$usersGrouped = $users | Group-Object -Property $userCorrelationAttribute -AsString -AsHashTable
-Write-Information "Gathered users. Result count: $(($users | Measure-Object).Count)" -InformationAction Continue
+$adUserPropertiesToQuery = @('DistinguishedName', 'SamAccountName', 'UserPrincipalName', 'Name', 'DisplayName', 'EmployeeID', 'EmployeeNumber', 'MemberOf', $userCorrelationAttribute) | Select-Object -Unique
+$users = Get-ADUser -Filter { (ObjectClass -eq 'user') } -Properties $adUserPropertiesToQuery
+Write-Information "Gathered users. Result count: $($users.Count)" -InformationAction Continue
+
+# Filter to enabled users
+$enabledUsers = $users | Where-Object { $_.Enabled -eq $true }
+Write-Information "Filtered down to enabled users. Result count: $($enabledUsers.Count)" -InformationAction Continue
+
+# Filter to users with correlation attribute set
+$filteredUsers = $enabledUsers | Where-Object { -not [String]::IsNullOrEmpty($_.$userCorrelationAttribute) }
+Write-Information "Filtered down to users with correlation attribute set. Result count: $($filteredUsers.Count)" -InformationAction Continue
+
+# Group users by correlation attribute
+$usersGrouped = $filteredUsers | Group-Object -Property $userCorrelationAttribute -AsString -AsHashTable
 
 # Retrieve all groups
 Write-Information "Gathering groups..." -InformationAction Continue
@@ -645,16 +649,16 @@ foreach ($person in $expandedPersons) {
 
         [void]$personPermissions.Add($record)
     }
-        # Logging percentage of the script 
-        if ($counter -eq $logPoints[0]) {
-            Write-information "Status: 25% ($counter of $totalUsers) users processed."
-        }
-        elseif ($counter -eq $logPoints[1]) {
-            Write-information "Status: 50% ($counter of $totalUsers) users processed."
-        }
-        elseif ($counter -eq $logPoints[2]) {
-            Write-information "Status: 75% ($counter of $totalUsers) users processed."
-        }
+    # Logging percentage of the script 
+    if ($counter -eq $logPoints[0]) {
+        Write-information "Status: 25% ($counter of $totalUsers) users processed."
+    }
+    elseif ($counter -eq $logPoints[1]) {
+        Write-information "Status: 50% ($counter of $totalUsers) users processed."
+    }
+    elseif ($counter -eq $logPoints[2]) {
+        Write-information "Status: 75% ($counter of $totalUsers) users processed."
+    }
 }
 
 #region security logging exports
