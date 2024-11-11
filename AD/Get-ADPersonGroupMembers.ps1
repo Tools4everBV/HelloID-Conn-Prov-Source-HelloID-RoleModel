@@ -1,18 +1,3 @@
-# Function designed for use when running a scheduled task in HelloID.
-# HelloID scheduled tasks do not log Write-Information by default, so this function
-# redirects Write-Information to Hid-Write-Status to ensure proper logging.
-function Write-Information {
-    [CmdletBinding()]
-    param(
-        # The message to be logged.
-        [Parameter(Mandatory = $true)]
-        [string]$Message
-    )
-
-    # Redirect Write-Information to Hid-Write-Status with an Information event.
-    Hid-Write-Status -Message $Message -Event "Information"
-}
-
 <#
 .SYNOPSIS
 
@@ -67,6 +52,9 @@ $personPropertiesToInclude = @($personCorrelationAttribute, "source.displayname"
 # Specify the Contracts fields from the HelloID Vault export to include in the report (These have to match the exact name from he Vault.json export)
 $contractPropertiesToInclude = @("costCenter.externalId", "Costcenter.name")
 
+# Function designed for use when running a scheduled task in HelloID.
+# HelloID scheduled tasks do not log Write-Information by default, so this function
+# redirects Write-Information to Hid-Write-Status to ensure proper logging.
 function Write-Information {
     [CmdletBinding()]
     param(
