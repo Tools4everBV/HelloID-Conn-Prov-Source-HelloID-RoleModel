@@ -27,6 +27,8 @@ function Write-Information {
 # Specify whether to output the verbose logging
 #$verboseLogging = $false
 
+$adDomainName = "domain.local"
+
 # Toggle to include nested groupmemberships
 $includeNestedGroupMemberships = $true # or $false
 $nestedGroupMembershipsMaxDepth = 5 # 0 will result in no nested groupmemberships
@@ -289,7 +291,7 @@ Expand-Persons -Persons $snapshot.Persons ([ref]$ExpandedPersons)
 # Retrieve all users
 Write-Information "Gathering users..." -InformationAction Continue
 $adUserPropertiesToQuery = @('DistinguishedName', 'SamAccountName', 'UserPrincipalName', 'Name', 'DisplayName', 'EmployeeID', 'EmployeeNumber', 'MemberOf', $userCorrelationAttribute) | Select-Object -Unique
-$users = Get-ADUser -Filter { (ObjectClass -eq 'user') } -Properties $adUserPropertiesToQuery
+$users = Get-ADUser -Filter { (ObjectClass -eq 'user') } -Properties $adUserPropertiesToQuery -Server $adDomainName
 Write-Information "Gathered users. Result count: $($users.Count)" -InformationAction Continue
 
 # Filter to enabled users
@@ -306,7 +308,7 @@ $usersGrouped = $filteredUsers | Group-Object -Property $userCorrelationAttribut
 # Retrieve all groups
 Write-Information "Gathering groups..." -InformationAction Continue
 $groups = New-Object System.Collections.ArrayList
-$groups = Get-ADGroup -Filter * -Properties Name, ObjectGUID, ObjectClass, DistinguishedName, Member, MemberOf, whenChanged, whenCreated
+$groups = Get-ADGroup -Filter * -Properties Name, ObjectGUID, ObjectClass, DistinguishedName, Member, MemberOf, whenChanged, whenCreated -Server $adDomainName
 $groups = $groups | Where-Object { 
     $_.DistinguishedName -notmatch 'CN=Builtin' -or $_.Name -eq 'Domain Users' 
 }
