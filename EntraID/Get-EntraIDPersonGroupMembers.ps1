@@ -13,16 +13,17 @@
     Version 1.2 (RH) - added nesting support
     Version 1.2.1 (JS) - fix column 'Status' is removed from export 'entilements.csv'
     Version 1.2.2 (JS) - fix: calculate dummy permission even if person has no other permissions
+    Version 1.2.3 (RS) - fix: fix nesting Entra ID groups
 #>
 # Specify whether to output the logging
 $VerbosePreference = 'SilentlyContinue'
 $InformationPreference = "Continue"
 $WarningPreference = "Continue"
 
-# Used to connect to Azure AD Graph API, specify the tenant id, app id & secret
-$AADtenantID = "<AZURE_TENANT_ID>"
-$AADAppId = "<AZURE_APP_ID>"
-$AADAppSecret = "<AZURE_APP_SECRET>"
+# Used to connect to EntraID Graph API, specify the tenant id, app id & secret
+$EntraIDtenantID = "<EntraID_TENANT_ID>"
+$EntraIDAppId = "<EntraID_APP_ID>"
+$EntraIDAppSecret = "<EntraID_APP_SECRET>"
 
 # Toggle to include nested groupmemberships (up to a maximum of 1 layer deep)
 $includeNestedGroupMemberships = $true # or $false
@@ -38,8 +39,8 @@ $exportPath = "C:\HelloID\RoleminingEntraID\"
 # The location of the Evaluation Report Csv (needs to be manually exported from a HelloID Provisioning evaluation).
 $evaluationReportCsv = $exportPath + "EvaluationReport.csv"
 # The name of the system on which to check the permissions in the evaluation (Required when using the evaluation report)
-$evaluationSystemName = "Microsoft Azure AD"
-# The name of the permission type on which to check the permissions in the evaluation (Required when using the entitlements report) (Default for Azure AD is: Group Membership)
+$evaluationSystemName = "Microsoft Entra ID"
+# The name of the permission type on which to check the permissions in the evaluation (Required when using the entitlements report) (Default for Entra ID is: Group Membership)
 $evaluationPermissionTypeName = "Group Membership"
 
 # Optionally, specifiy the parameters below when you want to check the groups against a granted entitlements report
@@ -47,12 +48,12 @@ $evaluationPermissionTypeName = "Group Membership"
 $grantedEntitlementsCsv = $exportPath + "Entitlements.csv"
 # The name of the system on which to check the permissions in the granted entitlements (Required when using the entitlements report)
 $entitlementsSystemName = "Microsoft Entra ID"
-# The name(s) of the permission type on which to check the permissions in the granted entitlements (Required when using the entitlements report) (Default for Azure AD is: Group Membership)
+# The name(s) of the permission type on which to check the permissions in the granted entitlements (Required when using the entitlements report) (Default for Entra ID is: Group Membership)
 $entitlementsPermissionTypeNames = @("Permission - Security Group", "Permission - M365 Group")
 
 # The attribute used to correlate a person to an account
-$personCorrelationAttribute = "externalId" # or e.g. "externalId"
-$userCorrelationAttribute = "employeeId" # or e.g. "userAttributes.EmployeeID"
+$personCorrelationAttribute = "externalId" # or e.g. "Contact.Business.email"
+$userCorrelationAttribute = "employeeId" # or e.g. "userPrincipalName"
 
 # The location of the Vault export in JSON format (needs to be manually exported from a HelloID Provisioning snapshot).
 $vaultJson = $exportPath + "vault.json"
@@ -230,54 +231,6 @@ function Get-ErrorMessage {
 }
 #endregion functions
 
-function Invoke-TransformMembershipsToMemberOf {
-    param(
-        [parameter(Mandatory = $true)]$GroupsWithMembers,
-        [parameter(Mandatory = $true)][ref]$usersWithMemberOf
-    )
-
-    try {
-        Write-Information "Transforming group memberships to users with memberOf..." -InformationAction Continue
-
-        foreach ($record in $GroupsWithMembers) {   
-            if ($record.users.'@odata.type' -eq '#microsoft.graph.user') {
-                foreach ($user in $record.users) {
-                    $userWithMemberOf = [PSCustomObject]@{
-                        userGuid    = $user.id
-                        memberOf    = $record.Id
-                        isNested    = $false
-                        parentGroup = $null
-                    }
-                    [void]$usersWithMemberOf.Value.Add($userWithMemberOf)
-                }
-            }
-        }
-
-        if ($includeNestedGroupMemberships -eq $true) {
-            $usersWithMemberOfGrouped = $usersWithMemberOf.Value | Group-Object -Property memberOf -AsString -AsHashTable
-            foreach ($record in $GroupsWithMembers) {
-                if ($record.groups.'@odata.type' -eq '#microsoft.graph.group') {
-                    foreach ($groupGuid in $record.groups) {
-                        foreach ($userGuid in $usersWithMemberOfGrouped[$groupGuid.id].userGuid) {
-                            $userWithMemberOf = [PSCustomObject]@{
-                                userGuid    = $userGuid
-                                memberOf    = $record.Id
-                                isNested    = $true
-                                parentGroup = $groupsWithMembersHashTable[$groupGuid.id].Name
-                            }
-                            [void]$usersWithMemberOf.Value.Add($userWithMemberOf)
-                        }
-                    }
-                }                
-            }
-        }
-    }
-    catch {
-        $usersWithMemberOf.Value = $null
-        Write-Error $_.Exception
-    }
-}
-
 function Expand-Persons {
     param(
         [parameter(Mandatory = $true)]$Persons,
@@ -410,19 +363,19 @@ Expand-Persons -Persons $persons ([ref]$ExpandedPersons)
 #region Retrieve all users
 Write-Information "Gathering users..." -InformationAction Continue
 
-# Get Azure AD users
+# Get Entra ID users
 try {
-    $headers = New-AuthorizationHeaders -TenantId $AADtenantID -ClientId $AADAppId -ClientSecret $AADAppSecret
+    $headers = New-AuthorizationHeaders -TenantId $EntraIDtenantID -ClientId $EntraIDAppId -ClientSecret $EntraIDAppSecret
 
-    [System.Collections.ArrayList]$azureUsers = @()
+    [System.Collections.ArrayList]$entraIdUsers = @()
 
     # Define the properties to select (comma seperated)
     # Add optional popertySelection (mandatory: id,displayName,userPrincipalName)
     $properties = @("id", "displayName", "userPrincipalName", "accountEnabled", $userCorrelationAttribute)
     $select = "`$select=$($properties -join ",")"
 
-    # Get Microsoft Azure AD users (https://learn.microsoft.com/en-us/graph/api/user-list?view=graph-rest-1.0&tabs=http)
-    Write-Verbose "Querying Azure AD users"
+    # Get Microsoft Entra ID users (https://learn.microsoft.com/en-us/graph/api/user-list?view=graph-rest-1.0&tabs=http)
+    Write-Verbose "Querying Entra ID users"
 
     $baseUri = "https://graph.microsoft.com/"
     $splatWebRequest = @{
@@ -430,23 +383,23 @@ try {
         Headers = $headers
         Method  = 'GET'
     }
-    $getAzureUsersResponse = $null
-    $getAzureUsersResponse = Invoke-RestMethod @splatWebRequest -Verbose:$false
-    foreach ($azureUser in $getAzureUsersResponse.value) { $null = $azureUsers.Add($azureUser) }
+    $getEntraIdUsersResponse = $null
+    $getEntraIdUsersResponse = Invoke-RestMethod @splatWebRequest -Verbose:$false
+    foreach ($entraIdUser in $getEntraIdUsersResponse.value) { $null = $entraIdUsers.Add($entraIdUser) }
     
-    while (![string]::IsNullOrEmpty($getAzureUsersResponse.'@odata.nextLink')) {
+    while (![string]::IsNullOrEmpty($getEntraIdUsersResponse.'@odata.nextLink')) {
         $baseUri = "https://graph.microsoft.com/"
         $splatWebRequest = @{
-            Uri     = $getAzureUsersResponse.'@odata.nextLink'
+            Uri     = $getEntraIdUsersResponse.'@odata.nextLink'
             Headers = $headers
             Method  = 'GET'
         }
-        $getAzureUsersResponse = $null
-        $getAzureUsersResponse = Invoke-RestMethod @splatWebRequest -Verbose:$false
-        foreach ($azureUser in $getAzureUsersResponse.value) { $null = $azureUsers.Add($azureUser) }
+        $getEntraIdUsersResponse = $null
+        $getEntraIdUsersResponse = Invoke-RestMethod @splatWebRequest -Verbose:$false
+        foreach ($entraIdUser in $getEntraIdUsersResponse.value) { $null = $entraIdUsers.Add($entraIdUser) }
     }
 
-    Write-Information "Successfully queried Azure AD users. Result count: $($azureUsers.Count)"
+    Write-Information "Successfully queried Entra ID users. Result count: $($entraIdUsers.Count)"
 }
 catch {
     $ex = $PSItem
@@ -454,10 +407,10 @@ catch {
 
     Write-Verbose "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($errorMessage.VerboseErrorMessage)"
 
-    throw "Error querying Azure AD users. Error Message: $($errorMessage.AuditErrorMessage)"
+    throw "Error querying Entra ID users. Error Message: $($errorMessage.AuditErrorMessage)"
 }
 
-$users = $azureUsers | Where-Object { [String]::IsNullOrEmpty($_.($userCorrelationAttribute)) -eq $false }
+$users = $entraIdUsers | Where-Object { [String]::IsNullOrEmpty($_.($userCorrelationAttribute)) -eq $false }
 Export-Clixml -Path "$($exportPath)users.xml" -InputObject $users
 $usersGrouped = $users | Group-Object $userCorrelationAttribute -AsHashTable
 #endregion Retrieve all users
@@ -467,7 +420,7 @@ Write-Information "Gathering groups..." -InformationAction Continue
 
 # Get Microsoft 365 Groups (Currently only Microsoft 365 and Security groups are supported by the Microsoft Graph API: https://docs.microsoft.com/en-us/graph/api/resources/groups-overview?view=graph-rest-1.0)
 try {
-    $headers = New-AuthorizationHeaders -TenantId $AADtenantID -ClientId $AADAppId -ClientSecret $AADAppSecret
+    $headers = New-AuthorizationHeaders -TenantId $EntraIDtenantID -ClientId $EntraIDAppId -ClientSecret $EntraIDAppSecret
 
     [System.Collections.ArrayList]$m365Groups = @()
 
@@ -521,7 +474,7 @@ catch {
 
 # Get Security Groups (Currently only Microsoft 365 and Security groups are supported by the Microsoft Graph API: https://docs.microsoft.com/en-us/graph/api/resources/groups-overview?view=graph-rest-1.0)
 try {
-    $headers = New-AuthorizationHeaders -TenantId $AADtenantID -ClientId $AADAppId -ClientSecret $AADAppSecret
+    $headers = New-AuthorizationHeaders -TenantId $EntraIDtenantID -ClientId $EntraIDAppId -ClientSecret $EntraIDAppSecret
 
     [System.Collections.ArrayList]$securityGroups = @()
 
@@ -575,96 +528,160 @@ catch {
 
 $groups = $m365Groups + $securityGroups
 Export-Clixml -Path "$($exportPath)groups.xml" -InputObject $groups
-$groupsGrouped = $groups | Group-Object id -AsHashTable
+$groupsGrouped = $groups | Group-Object id -AsString -AsHashTable
 #endregion Retrieve all groups
 
-#region Retrieve the membership of groups, requires fetch per group
-$groupsWithMembers = New-Object System.Collections.ArrayList
-
-# Get members of groups
-try {
-    Write-Information "Retrieving group memberships for each group..." -InformationAction Continue
-
-    $headers = New-AuthorizationHeaders -TenantId $AADtenantID -ClientId $AADAppId -ClientSecret $AADAppSecret
-
-    [System.Collections.ArrayList]$groupsWithMembers = @()
-
+# Get nested group memberships
+if ($IncludeNestedGroupMemberships -eq $true) {
     # Retrieve the membership of groups, requires fetch per group
-    foreach ($group in $Groups) {
-        [System.Collections.ArrayList]$groupMembers = @()
+    try {
+        Write-Information "Retrieving group memberships for each group..." -InformationAction Continue
 
-        # Get members of group (https://learn.microsoft.com/en-us/graph/api/group-list-members?view=graph-rest-1.0&tabs=http)
-        $properties = @("id", "displayName", "userPrincipalName", $userCorrelationAttribute)
-        $select = "`$select=$($properties -join ",")"
+        # Log points the log the status of the script
+        $logPoints = @([math]::Ceiling($groups.Count * 0.25), [math]::Ceiling($groups.Count * 0.50), [math]::Ceiling($groups.Count * 0.75))
+        $counter = 0
 
-        $baseUri = "https://graph.microsoft.com/"
-        $splatWebRequest = @{
-            Uri     = "$baseUri/v1.0/groups/$($group.id)/members?$select"
-            Headers = $headers
-            Method  = 'GET'
-        }
-        $getGroupMembersResponse = $null
-        $getGroupMembersResponse = Invoke-RestMethod @splatWebRequest -Verbose:$false
-        foreach ($groupMember in $getGroupMembersResponse.value) { $null = $groupMembers.Add($groupMember) }    
-        
-        while (![string]::IsNullOrEmpty($getGroupMembersResponse.'@odata.nextLink')) {
-            $baseUri = "https://graph.microsoft.com/"
-            $splatWebRequest = @{
-                Uri     = $getGroupMembersResponse.'@odata.nextLink'
-                Headers = $headers
-                Method  = 'GET'
+        # Create list of all groups with their group memberships
+        $GroupsWithMemberships = [System.Collections.ArrayList]::new()
+
+        foreach ($group in $groups) {
+            $counter++
+
+            # Logging percentage of the script 
+            if ($counter -eq $logPoints[0]) {
+                Write-information "Status: 25% ($counter of $($groups.Count)) groups processed."
             }
-            $getGroupMembersResponse = $null
-            $getGroupMembersResponse = Invoke-RestMethod @splatWebRequest -Verbose:$false
-            foreach ($groupMember in $getGroupMembersResponse.value) { $null = $groupMembers.Add($groupMember) }
-        }
+            elseif ($counter -eq $logPoints[1]) {
+                Write-information "Status: 50% ($counter of $($groups.Count)) groups processed."
+            }
+            elseif ($counter -eq $logPoints[2]) {
+                Write-information "Status: 75% ($counter of $($groups.Count)) groups processed."
+            }
 
-        $groupAugmented = [PSCustomObject]@{}
+            #region Get groups's memberships
+            # API docs: https://learn.microsoft.com/en-us/graph/api/group-list-memberof?view=graph-rest-1.0&tabs=http
+            $getEntraIDGroupMembershipsSplatParams = @{
+                Uri         = "https://graph.microsoft.com/v1.0/groups/$($group.id)/memberof"
+                Headers     = $headers
+                Method      = "GET"
+                Verbose     = $false
+                ErrorAction = "Stop"
+            }
 
-        if ($groupMembers.'@odata.type' -eq '#microsoft.graph.group') {
-            $groupAugmented = [PSCustomObject]@{
-                Id     = $group.id
-                Name   = $group.displayName
-                Groups = $groupMembers
+            $getEntraIDGroupMembershipsResponse = $null
+            $getEntraIDGroupMembershipsResponse = Invoke-RestMethod @getEntraIDGroupMembershipsSplatParams
+            $groupMembers = $getEntraIDGroupMembershipsResponse.Value
+            #endregion
+
+            foreach ($groupMember in $groupMembers) {
+                # Create custom object for group with group membership
+                $GroupCustomObject = [PSCustomObject]@{
+                    ParentGroupName = $group.displayName
+                    ParentGroupGuid = $group.id
+                    ChildGroupName  = $groupMember.displayName
+                    ChildGroupGuid  = $groupMember.id
+                }
+
+                # Add the custom object for group with group membership to list of all groups with their group memberships
+                [void]$GroupsWithMemberships.Add($GroupCustomObject)
             }
         }
 
-        if ($groupMembers.'@odata.type' -eq '#microsoft.graph.user') {
-            $groupAugmented = [PSCustomObject]@{
-                Id    = $group.id
-                Name  = $group.displayName
-                Users = $groupMembers
-            }
+        Write-Information "Gathered group memberships for each group. Result count: $(($UsersWithMemberships | Measure-Object).Count)" -InformationAction Continue
+    }
+    catch {
+        Write-Error $_.Exception
+    }
+}
+
+$groupsWithMemberOf = $GroupsWithMemberships | Group-Object -Property "ParentGroupGuid" -AsString -AsHashTable
+
+# Retrieve the membership of users, requires fetch per user
+try {
+    Write-Information "Retrieving group memberships for each user..." -InformationAction Continue
+
+    # Log points the log the status of the script
+    $logPoints = @([math]::Ceiling($Users.Count * 0.25), [math]::Ceiling($Users.Count * 0.50), [math]::Ceiling($Users.Count * 0.75))
+    $counter = 0
+
+    # Create list of all users with their group memberships
+    $UsersWithMemberships = [System.Collections.ArrayList]::new()
+
+    foreach ($User in $Users) {
+        $counter++
+
+        # Logging percentage of the script 
+        if ($counter -eq $logPoints[0]) {
+            Write-information "Status: 25% ($counter of $($Users.Count)) users processed."
+        }
+        elseif ($counter -eq $logPoints[1]) {
+            Write-information "Status: 50% ($counter of $($Users.Count)) users processed."
+        }
+        elseif ($counter -eq $logPoints[2]) {
+            Write-information "Status: 75% ($counter of $($Users.Count)) users processed."
         }
 
-        if ($groupAugmented.Id -ne $null) {
-            [void]$groupsWithMembers.Add($groupAugmented)      
+        #region Get user's memberships
+        # API docs: https://learn.microsoft.com/en-us/graph/api/user-list-memberof?view=graph-rest-1.0&tabs=http
+        $getEntraIDUserMembershipsSplatParams = @{
+            Uri         = "https://graph.microsoft.com/v1.0/users/$($user.id)/memberOf"
+            Headers     = $headers
+            Method      = "GET"
+            Verbose     = $false
+            ErrorAction = "Stop"
+        }
+
+        $getEntraIDUserMembershipsResponse = $null
+        $getEntraIDUserMembershipsResponse = Invoke-RestMethod @getEntraIDUserMembershipsSplatParams
+        $userMemberships = $getEntraIDUserMembershipsResponse.Value
+        #endregion
+
+        foreach ($userMembership in $userMemberships) {
+            if ($groupsGrouped.ContainsKey("$($userMembership.id)")) {           
+                # Create custom object for user with group membership
+                $UserCustomObject = [PSCustomObject]@{
+                    UserName        = $User.displayName
+                    UserGuid        = $User.id
+                    GroupName       = $userMembership.displayName
+                    GroupGuid       = $userMembership.id
+                    IsNested        = $false
+                    "Member/Parent" = $null
+                }
+
+                # Add the custom object for user with group membership to list of all users with their group memberships
+                [void]$UsersWithMemberships.Add($UserCustomObject)
+
+                if ($IncludeNestedGroupMemberships -eq $true) {
+                    if ($groupsWithMemberOf.ContainsKey("$($userMembership.id)")) { 
+                        $groupMembers = $groupsWithMemberOf["$($userMembership.id)"]
+
+                        foreach ($groupMember in $groupMembers) {
+                            # Create custom object for user with group membership
+                            $UserCustomObject = [PSCustomObject]@{
+                                UserName        = $User.displayName
+                                UserGuid        = $User.id
+                                GroupName       = $groupMember.ChildGroupName
+                                GroupGuid       = $groupMember.ChildGroupGuid
+                                IsNested        = $true
+                                "Member/Parent" = $groupMember.ParentGroupName
+                            }
+    
+                            # Add the custom object for user with group membership to list of all users with their group memberships
+                            [void]$UsersWithMemberships.Add($UserCustomObject)
+                        }
+                    }
+                }
+            }
         }
     }
-    
-    Write-Information "Successfully retrieved group memberships for each group. Result count: $($groupsWithMembers.Users.Count)"  
+
+    Write-Information "Gathered group memberships for each user. Result count: $(($UsersWithMemberships | Measure-Object).Count)" -InformationAction Continue
 }
 catch {
-    $ex = $PSItem
-    $errorMessage = Get-ErrorMessage -ErrorObject $ex
-
-    Write-Verbose "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($errorMessage.VerboseErrorMessage)"
-
-    throw "Error retrieving group memberships for each group. Error Message: $($errorMessage.AuditErrorMessage)"
+    Write-Error $_.Exception
 }
 
-Export-Clixml -Path "$($exportPath)groupsWithMembers.xml" -InputObject $groupsWithMembers
-$groupsWithMembers = Import-Clixml -Path "$($exportPath)groupsWithMembers.xml"
-#endegion Retrieve the membership of groups, requires fetch per group
-
-$groupsWithMembersHashTable = $groupsWithMembers | Group-Object "id" -AsHashTable
-
-#region Transform group memberships into users with memberOf
-$usersWithMemberOf = New-Object System.Collections.ArrayList
-Invoke-TransformMembershipsToMemberOf -GroupsWithMembers $groupsWithMembers ([ref]$usersWithMemberOf)
-Export-Clixml -Path "$($exportPath)usersWithMemberOf.xml" -InputObject $usersWithMemberOf
-$usersWithMemberOf = $usersWithMemberOf | Group-Object "userGuid" -AsHashTable
-#endregion Transform group memberships into users with memberOf
+$usersWithMemberOf = $UsersWithMemberships | Group-Object -Property "UserGuid" -AsString -AsHashTable
 
 $personPermissions = New-Object System.Collections.ArrayList
 
@@ -728,6 +745,18 @@ $counter = 0
 
 foreach ($person in $expandedPersons) {
     $counter++
+
+    # Logging percentage of the script 
+    if ($counter -eq $logPoints[0]) {
+        Write-information "Status: 25% ($counter of $totalUsers) users processed."
+    }
+    elseif ($counter -eq $logPoints[1]) {
+        Write-information "Status: 50% ($counter of $totalUsers) users processed."
+    }
+    elseif ($counter -eq $logPoints[2]) {
+        Write-information "Status: 75% ($counter of $totalUsers) users processed."
+    }
+
     $personCorrelationProperty = $personCorrelationAttribute.replace(".", "")
     $personCorrelationValue = $person.$personCorrelationProperty
     $person | Add-Member -MemberType NoteProperty -Name 'isActive' -Value '' -Force  
@@ -769,7 +798,7 @@ foreach ($person in $expandedPersons) {
         continue; 
     }
     
-    $permissions = $usersWithMemberOf[$user.id]
+    $permissions = $usersWithMemberOf["$($user.id)"]
     
     #add dummy group
     if ($addDummyGroup -eq $true) {
@@ -798,7 +827,7 @@ foreach ($person in $expandedPersons) {
         }
         if ($includeNestedGroupMemberships -eq $true) {
             $dummyRecord | Add-Member -MemberType NoteProperty -Name "isNested" -Value $false -Force
-            $dummyRecord | Add-Member -MemberType NoteProperty -Name "parentGroup" -Value $null -Force
+            $dummyRecord | Add-Member -MemberType NoteProperty -Name "Member/Parent" -Value $null -Force
         }
 
         if ($personPropertiesToInclude) {
@@ -840,7 +869,7 @@ foreach ($person in $expandedPersons) {
     if ($null -ne $personsWithGrantedEntitlements) { $grantedEntitlements = $personsWithGrantedEntitlements[$person.DisplayName] }
 
     foreach ($permission in $permissions) {
-        $group = $groupsGrouped[$permission.memberOf]
+        $group = $groupsGrouped[$permission.GroupGuid]
 
         if ($null -eq $group) { continue; }
         
@@ -886,7 +915,7 @@ foreach ($person in $expandedPersons) {
 
         if ($includeNestedGroupMemberships -eq $true) {
             $record | Add-Member -MemberType NoteProperty -Name "isNested" -Value $permission.isNested -Force
-            $record | Add-Member -MemberType NoteProperty -Name "parentGroup" -Value $permission.parentGroup -Force
+            $record | Add-Member -MemberType NoteProperty -Name "Member/Parent" -Value $permission."Member/Parent" -Force
         }
 
         if ($personPropertiesToInclude) {
@@ -905,16 +934,6 @@ foreach ($person in $expandedPersons) {
         }
 
         [void]$personPermissions.Add($record)
-    }
-    # Logging percentage of the script 
-    if ($counter -eq $logPoints[0]) {
-        Write-information "Status: 25% ($counter of $totalUsers) users processed."
-    }
-    elseif ($counter -eq $logPoints[1]) {
-        Write-information "Status: 50% ($counter of $totalUsers) users processed."
-    }
-    elseif ($counter -eq $logPoints[2]) {
-        Write-information "Status: 75% ($counter of $totalUsers) users processed."
     }
 }
 
