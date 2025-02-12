@@ -510,223 +510,252 @@ try {
     }
     #endregion Get Mailbox
 
+    Write-information "Retrieving permissions ($($systemPermissionOptions -Join ',')) for each mailbox..."
     [System.Collections.ArrayList]$fullAccessUsers = @()
     [System.Collections.ArrayList]$sendAsUsers = @()
     [System.Collections.ArrayList]$sendOnBehalfUsers = @()
 
-    foreach ($mailbox in $mailboxes) {
-        #region Get objects with Full Access to Shared Mailbox
-        try {
-            Write-Verbose "Querying Full Access Permissions to Mailbox [$($mailbox.UserPrincipalName)]"
+    foreach ($systemPermissionOption in $systemPermissionOptions) {
+        # Log points the log the status of the script
+        $logPoints = @([math]::Ceiling($mailboxes.Count * 0.25), [math]::Ceiling($mailboxes.Count * 0.50), [math]::Ceiling($mailboxes.Count * 0.75))
+        $counter = 0
 
-            $fullAccessPermissions = Get-EXOMailboxPermission -Identity $mailbox.UserPrincipalName -ResultSize Unlimited # Returns UPN of users, DisplayName of groups
+        foreach ($mailbox in $mailboxes) {
+            $counter++
 
-            # Filter out "NT AUTHORITY\*" and "Domain Admins" Group
-            $fullAccessPermissions = $fullAccessPermissions | Where-Object { ($_.accessRights -like "*fullaccess*") -and -not($_.Deny -eq $true) -and -not($_.User -like "NT AUTHORITY\*") -and -not($_.User -like "*\Domain Admins") }
+            # Logging percentage of the script 
+            if ($counter -eq $logPoints[0]) {
+                Write-information "Status: 25% ($counter of $($mailboxes.Count)) mailboxes processed for permission: $($systemPermissionOption)."
+            }
+            elseif ($counter -eq $logPoints[1]) {
+                Write-information "Status: 50% ($counter of $($mailboxes.Count)) mailboxes processed for permission: $($systemPermissionOption)."
+            }
+            elseif ($counter -eq $logPoints[2]) {
+                Write-information "Status: 75% ($counter of $($mailboxes.Count)) mailboxes processed for permission: $($systemPermissionOption)."
+            }
 
-            foreach ($fullAccessPermission in $fullAccessPermissions) {
-                $fullAccessUser = $null
-                # list of al the users in the mailbox. This includes the groups member from the mailbox
+            switch ($systemPermissionOption) {
+                "Full Access" {
+                    #region Get objects with Full Access to Shared Mailbox
+                    try {
+                        Write-Verbose "Querying Full Access Permissions to Mailbox [$($mailbox.UserPrincipalName)]"
 
-                if ($null -ne $fullAccessPermission.User) {
-                    $fullAccessUser = $null
-                    $fullAccessUser = $usersGroupedOnUPN[$($fullAccessPermission.user)]
-                    if ($null -ne $fullAccessUser) {
-                        $fullAccessUserObject = [PSCustomObject]@{
-                            MailboxDisplayName       = $mailbox.DisplayName
-                            MailboxName              = $mailbox.Name
-                            MailboxUserPrincipalName = $mailbox.UserPrincipalName
-                            MailboxId                = $mailbox.Id
-                            UserId                   = $fullAccessUser.id
-                            UserDisplayName          = $fullAccessUser.displayName
-                            UserUserPrincipalName    = $fullAccessUser.userPrincipalName
-                            UserIsNested             = $false
-                            UserParentGroup          = $null
-                        }
+                        $fullAccessPermissions = Get-EXOMailboxPermission -Identity $mailbox.UserPrincipalName -ResultSize Unlimited # Returns UPN of users, DisplayName of groups
 
-                        [void]$fullAccessUsers.Add($fullAccessUserObject)
-                    }
-                    Else {
-                        $fullAccessGroup = $null
-                        $fullAccessGroup = $groupsGroupedOnDisplayname[$($fullAccessPermission.user)]
-                        if ($null -ne $fullAccessGroup) {
-                            Write-Verbose "$($fullAccessPermission.user) is a group"
-                        
-                            # Get users of the nested groups
-                            foreach ($groupmember in $fullAccessGroup.Members) {
-                                $fullAccessNestedUser = $null
-                                $fullAccessNestedUser = $usersGroupedOnId[$groupmember]
-                                if ($null -ne $fullAccessNestedUser) {
+                        # Filter out "NT AUTHORITY\*" and "Domain Admins" Group
+                        $fullAccessPermissions = $fullAccessPermissions | Where-Object { ($_.accessRights -like "*fullaccess*") -and -not($_.Deny -eq $true) -and -not($_.User -like "NT AUTHORITY\*") -and -not($_.User -like "*\Domain Admins") }
 
+                        foreach ($fullAccessPermission in $fullAccessPermissions) {
+                            $fullAccessUser = $null
+                            # list of al the users in the mailbox. This includes the groups member from the mailbox
+
+                            if ($null -ne $fullAccessPermission.User) {
+                                $fullAccessUser = $null
+                                $fullAccessUser = $usersGroupedOnUPN[$($fullAccessPermission.user)]
+                                if ($null -ne $fullAccessUser) {
                                     $fullAccessUserObject = [PSCustomObject]@{
                                         MailboxDisplayName       = $mailbox.DisplayName
                                         MailboxName              = $mailbox.Name
                                         MailboxUserPrincipalName = $mailbox.UserPrincipalName
                                         MailboxId                = $mailbox.Id
-                                        UserId                   = $fullAccessNestedUser.id
-                                        UserDisplayName          = $fullAccessNestedUser.displayName
-                                        UserUserPrincipalName    = $fullAccessNestedUser.userPrincipalName
-                                        UserIsNested             = $true
-                                        UserParentGroup          = $fullAccessGroup.displayName
+                                        UserId                   = $fullAccessUser.id
+                                        UserDisplayName          = $fullAccessUser.displayName
+                                        UserUserPrincipalName    = $fullAccessUser.userPrincipalName
+                                        UserIsNested             = $false
+                                        UserParentGroup          = $null
                                     }
 
                                     [void]$fullAccessUsers.Add($fullAccessUserObject)
                                 }
+                                Else {
+                                    $fullAccessGroup = $null
+                                    $fullAccessGroup = $groupsGroupedOnDisplayname[$($fullAccessPermission.user)]
+                                    if ($null -ne $fullAccessGroup) {
+                                        Write-Verbose "$($fullAccessPermission.user) is a group"
+                                
+                                        # Get users of the nested groups
+                                        foreach ($groupmember in $fullAccessGroup.Members) {
+                                            $fullAccessNestedUser = $null
+                                            $fullAccessNestedUser = $usersGroupedOnId[$groupmember]
+                                            if ($null -ne $fullAccessNestedUser) {
+
+                                                $fullAccessUserObject = [PSCustomObject]@{
+                                                    MailboxDisplayName       = $mailbox.DisplayName
+                                                    MailboxName              = $mailbox.Name
+                                                    MailboxUserPrincipalName = $mailbox.UserPrincipalName
+                                                    MailboxId                = $mailbox.Id
+                                                    UserId                   = $fullAccessNestedUser.id
+                                                    UserDisplayName          = $fullAccessNestedUser.displayName
+                                                    UserUserPrincipalName    = $fullAccessNestedUser.userPrincipalName
+                                                    UserIsNested             = $true
+                                                    UserParentGroup          = $fullAccessGroup.displayName
+                                                }
+
+                                                [void]$fullAccessUsers.Add($fullAccessUserObject)
+                                            }
+                                        }
+                                        # Write-Verbose "Mailbox $($mailbox.UserPrincipalName) with group $($fullAccessGroup.DisplayName) has nested members. Result count nested: $(($fullAccessNestedUsers | Measure-Object).Count)"
+                                    }
+                                }
                             }
-                            # Write-Verbose "Mailbox $($mailbox.UserPrincipalName) with group $($fullAccessGroup.DisplayName) has nested members. Result count nested: $(($fullAccessNestedUsers | Measure-Object).Count)"
                         }
+
+                        Write-Verbose "Successfully queried Full Access Permissions to Mailbox [$($mailbox.UserPrincipalName)]. Result count: $(($fullAccessPermissions | Measure-Object).Count)"
+            
                     }
+                    catch {
+                        throw "Error querying Full Access Permissions to Mailbox [$($mailbox.UserPrincipalName)]. Error: $_"
+                    }
+            
+                    #endregion Get objects with Full Access to Shared Mailbox
+                    break
                 }
-            }
+                "Send As" {
+                    #region Get objects with Send As to Shared Mailbox
+                    try {
+                        Write-Verbose "Querying Send As Permissions to Mailbox [$($mailbox.UserPrincipalName)]"
 
-            Write-Verbose "Successfully queried Full Access Permissions to Mailbox [$($mailbox.UserPrincipalName)]. Result count: $(($fullAccessPermissions | Measure-Object).Count)"
-    
-        }
-        catch {
-            throw "Error querying Full Access Permissions to Mailbox [$($mailbox.UserPrincipalName)]. Error: $_"
-        }
-    
-        #endregion Get objects with Full Access to Shared Mailbox
+                        $sendAsPermissions = Get-EXORecipientPermission -Identity $mailbox.UserPrincipalName -AccessRights 'SendAs' -ResultSize Unlimited # Returns UPN of users, Name of groups
 
-        #region Get objects with Send As to Shared Mailbox
-        try {
-            Write-Verbose "Querying Send As Permissions to Mailbox [$($mailbox.UserPrincipalName)]"
+                        # Filter out "NT AUTHORITY\*" and "Domain Admins" Group
+                        $sendAsPermissions = $sendAsPermissions | Where-Object { -not($_.Deny -eq $true) -and -not($_.Trustee -like "NT AUTHORITY\*") -and -not($_.Trustee -like "*\Domain Admins") }
 
-            $sendAsPermissions = Get-EXORecipientPermission -Identity $mailbox.UserPrincipalName -AccessRights 'SendAs' -ResultSize Unlimited # Returns UPN of users, Name of groups
+                        foreach ($sendAsPermission in $sendAsPermissions) {
+                            $sendAsUser = $null
+                            # list of al the users in the mailbox. This includes the groups member from the mailbox
 
-            # Filter out "NT AUTHORITY\*" and "Domain Admins" Group
-            $sendAsPermissions = $sendAsPermissions | Where-Object { -not($_.Deny -eq $true) -and -not($_.Trustee -like "NT AUTHORITY\*") -and -not($_.Trustee -like "*\Domain Admins") }
-
-            foreach ($sendAsPermission in $sendAsPermissions) {
-                $sendAsUser = $null
-                # list of al the users in the mailbox. This includes the groups member from the mailbox
-
-                if ($null -ne $sendAsPermission.Trustee) {
-                    $sendAsUser = $null
-                    $sendAsUser = $usersGroupedOnUPN[$($sendAsPermission.Trustee)]
-                    if ($null -ne $sendAsUser) {
-                        $sendAsUserObject = [PSCustomObject]@{
-                            MailboxDisplayName       = $mailbox.DisplayName
-                            MailboxName              = $mailbox.Name
-                            MailboxUserPrincipalName = $mailbox.UserPrincipalName
-                            MailboxId                = $mailbox.Id
-                            UserId                   = $sendAsUser.id
-                            UserDisplayName          = $sendAsUser.displayName
-                            UserUserPrincipalName    = $sendAsUser.userPrincipalName
-                            UserIsNested             = $false
-                            UserParentGroup          = $null
-                        }
-
-                        [void]$sendAsUsers.Add($sendAsUserObject)
-                    }
-                    Else {
-                        $sendAsGroup = $null
-                        $sendAsGroup = $groupsGroupedOnName[$($sendAsPermission.Trustee)]
-                        if ($null -ne $sendAsGroup) {
-                            Write-Verbose "$($sendAsPermission.Trustee) is a group"
-                        
-                            # Get users of the nested groups
-                            foreach ($groupmember in $sendAsGroup.Members) {
-                                $sendAsNestedUser = $null
-                                $sendAsNestedUser = $usersGroupedOnId[$groupmember]
-                                if ($null -ne $sendAsNestedUser) {
-
+                            if ($null -ne $sendAsPermission.Trustee) {
+                                $sendAsUser = $null
+                                $sendAsUser = $usersGroupedOnUPN[$($sendAsPermission.Trustee)]
+                                if ($null -ne $sendAsUser) {
                                     $sendAsUserObject = [PSCustomObject]@{
                                         MailboxDisplayName       = $mailbox.DisplayName
                                         MailboxName              = $mailbox.Name
                                         MailboxUserPrincipalName = $mailbox.UserPrincipalName
                                         MailboxId                = $mailbox.Id
-                                        UserId                   = $sendAsNestedUser.id
-                                        UserDisplayName          = $sendAsNestedUser.displayName
-                                        UserUserPrincipalName    = $sendAsNestedUser.userPrincipalName
-                                        UserIsNested             = $true
-                                        UserParentGroup          = $sendAsGroup.displayName
+                                        UserId                   = $sendAsUser.id
+                                        UserDisplayName          = $sendAsUser.displayName
+                                        UserUserPrincipalName    = $sendAsUser.userPrincipalName
+                                        UserIsNested             = $false
+                                        UserParentGroup          = $null
                                     }
 
                                     [void]$sendAsUsers.Add($sendAsUserObject)
                                 }
+                                Else {
+                                    $sendAsGroup = $null
+                                    $sendAsGroup = $groupsGroupedOnName[$($sendAsPermission.Trustee)]
+                                    if ($null -ne $sendAsGroup) {
+                                        Write-Verbose "$($sendAsPermission.Trustee) is a group"
+                                
+                                        # Get users of the nested groups
+                                        foreach ($groupmember in $sendAsGroup.Members) {
+                                            $sendAsNestedUser = $null
+                                            $sendAsNestedUser = $usersGroupedOnId[$groupmember]
+                                            if ($null -ne $sendAsNestedUser) {
+
+                                                $sendAsUserObject = [PSCustomObject]@{
+                                                    MailboxDisplayName       = $mailbox.DisplayName
+                                                    MailboxName              = $mailbox.Name
+                                                    MailboxUserPrincipalName = $mailbox.UserPrincipalName
+                                                    MailboxId                = $mailbox.Id
+                                                    UserId                   = $sendAsNestedUser.id
+                                                    UserDisplayName          = $sendAsNestedUser.displayName
+                                                    UserUserPrincipalName    = $sendAsNestedUser.userPrincipalName
+                                                    UserIsNested             = $true
+                                                    UserParentGroup          = $sendAsGroup.displayName
+                                                }
+
+                                                [void]$sendAsUsers.Add($sendAsUserObject)
+                                            }
+                                        }
+                                        # Write-Verbose "Mailbox $($mailbox.UserPrincipalName) with group $($sendAsGroup.DisplayName) has nested members. Result count nested: $(($fullAccessNestedUsers | Measure-Object).Count)"
+                                    }
+                                }
                             }
-                            # Write-Verbose "Mailbox $($mailbox.UserPrincipalName) with group $($sendAsGroup.DisplayName) has nested members. Result count nested: $(($fullAccessNestedUsers | Measure-Object).Count)"
                         }
+
+                        Write-Verbose "Successfully queried Send As Permissions to Mailbox [$($mailbox.UserPrincipalName)]. Result count: $(($sendAsPermissions | Measure-Object).Count)"
                     }
+                    catch {
+                        throw "Error querying Send As Permissions to Mailbox [$($mailbox.UserPrincipalName)]. Error: $_"
+                    }
+                    #endregion Get objects with Send As to Shared Mailbox                    
+                    break
                 }
-            }
-
-            Write-Verbose "Successfully queried Send As Permissions to Mailbox [$($mailbox.UserPrincipalName)]. Result count: $(($sendAsPermissions | Measure-Object).Count)"
-        }
-        catch {
-            throw "Error querying Send As Permissions to Mailbox [$($mailbox.UserPrincipalName)]. Error: $_"
-        }
-        #endregion Get objects with Send As to Shared Mailbox
-
-        #region Get objects with Send On Behalf to Shared Mailbox
-        try {
-            Write-Verbose "Querying Send On Behalf Permissions to Mailbox [$($mailbox.UserPrincipalName)]"
-                
-            $sendOnBehalfPermissions = $mailbox | ForEach-Object { $_.GrantSendOnBehalfTo } # Returns Id of users, Name of groups
-
-            foreach ($sendOnBehalfPermission in $sendOnBehalfPermissions) {
-                $sendOnBehalfUser = $null
-                # list of al the users in the mailbox. This includes the groups member from the mailbox
-
-                if ($null -ne $sendOnBehalfPermission) {
-                    $sendOnBehalfUser = $null
-                    $sendOnBehalfUser = $usersGroupedOnId[$($sendOnBehalfPermission)]
-                    if ($null -ne $sendOnBehalfUser) {
-                        $sendOnBehalfUserObject = [PSCustomObject]@{
-                            MailboxDisplayName       = $mailbox.DisplayName
-                            MailboxName              = $mailbox.Name
-                            MailboxUserPrincipalName = $mailbox.UserPrincipalName
-                            MailboxId                = $mailbox.Id
-                            UserId                   = $sendOnBehalfUser.id
-                            UserDisplayName          = $sendOnBehalfUser.displayName
-                            UserUserPrincipalName    = $sendOnBehalfUser.userPrincipalName
-                            UserIsNested             = $false
-                            UserParentGroup          = $null
-                        }
-
-                        [void]$sendOnBehalfUsers.Add($sendOnBehalfUserObject)
-                    }
-                    Else {
-                        $sendOnBehalfGroup = $null
-                        $sendOnBehalfGroup = $groupsGroupedOnName[$($sendOnBehalfPermission)]
-                        if ($null -ne $sendOnBehalfGroup) {
-                            Write-Verbose "$($sendOnBehalfPermission) is a group"
+                "Send On Behalf" {
+                    #region Get objects with Send On Behalf to Shared Mailbox
+                    try {
+                        Write-Verbose "Querying Send On Behalf Permissions to Mailbox [$($mailbox.UserPrincipalName)]"
                         
-                            # Get users of the nested groups
-                            foreach ($groupmember in $sendOnBehalfGroup.Members) {
-                                $sendOnBehalfNestedUser = $null
-                                $sendOnBehalfNestedUser = $usersGroupedOnId[$groupmember]
-                                if ($null -ne $sendOnBehalfNestedUser) {
+                        $sendOnBehalfPermissions = $mailbox | ForEach-Object { $_.GrantSendOnBehalfTo } # Returns Id of users, Name of groups
 
+                        foreach ($sendOnBehalfPermission in $sendOnBehalfPermissions) {
+                            $sendOnBehalfUser = $null
+                            # list of al the users in the mailbox. This includes the groups member from the mailbox
+
+                            if ($null -ne $sendOnBehalfPermission) {
+                                $sendOnBehalfUser = $null
+                                $sendOnBehalfUser = $usersGroupedOnId[$($sendOnBehalfPermission)]
+                                if ($null -ne $sendOnBehalfUser) {
                                     $sendOnBehalfUserObject = [PSCustomObject]@{
                                         MailboxDisplayName       = $mailbox.DisplayName
                                         MailboxName              = $mailbox.Name
                                         MailboxUserPrincipalName = $mailbox.UserPrincipalName
                                         MailboxId                = $mailbox.Id
-                                        UserId                   = $sendOnBehalfNestedUser.id
-                                        UserDisplayName          = $sendOnBehalfNestedUser.displayName
-                                        UserUserPrincipalName    = $sendOnBehalfNestedUser.userPrincipalName
-                                        UserIsNested             = $true
-                                        UserParentGroup          = $sendOnBehalfGroup.displayName
+                                        UserId                   = $sendOnBehalfUser.id
+                                        UserDisplayName          = $sendOnBehalfUser.displayName
+                                        UserUserPrincipalName    = $sendOnBehalfUser.userPrincipalName
+                                        UserIsNested             = $false
+                                        UserParentGroup          = $null
                                     }
 
                                     [void]$sendOnBehalfUsers.Add($sendOnBehalfUserObject)
                                 }
+                                Else {
+                                    $sendOnBehalfGroup = $null
+                                    $sendOnBehalfGroup = $groupsGroupedOnName[$($sendOnBehalfPermission)]
+                                    if ($null -ne $sendOnBehalfGroup) {
+                                        Write-Verbose "$($sendOnBehalfPermission) is a group"
+                                
+                                        # Get users of the nested groups
+                                        foreach ($groupmember in $sendOnBehalfGroup.Members) {
+                                            $sendOnBehalfNestedUser = $null
+                                            $sendOnBehalfNestedUser = $usersGroupedOnId[$groupmember]
+                                            if ($null -ne $sendOnBehalfNestedUser) {
+
+                                                $sendOnBehalfUserObject = [PSCustomObject]@{
+                                                    MailboxDisplayName       = $mailbox.DisplayName
+                                                    MailboxName              = $mailbox.Name
+                                                    MailboxUserPrincipalName = $mailbox.UserPrincipalName
+                                                    MailboxId                = $mailbox.Id
+                                                    UserId                   = $sendOnBehalfNestedUser.id
+                                                    UserDisplayName          = $sendOnBehalfNestedUser.displayName
+                                                    UserUserPrincipalName    = $sendOnBehalfNestedUser.userPrincipalName
+                                                    UserIsNested             = $true
+                                                    UserParentGroup          = $sendOnBehalfGroup.displayName
+                                                }
+
+                                                [void]$sendOnBehalfUsers.Add($sendOnBehalfUserObject)
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
+                        Write-Verbose "Successfully queried Send On Behalf Permissions to Mailbox [$($mailbox.UserPrincipalName)]. Result count: $(($sendOnBehalfPermissions | Measure-Object).Count)"
                     }
+                    catch {
+                        throw "Error querying Send On Behalf Permissions to Mailbox [$($mailbox.UserPrincipalName)]. Error: $_"
+                    }
+                    #endregion Get objects with Send On Behalf to Shared Mailbox
+                    break
                 }
             }
-            Write-Verbose "Successfully queried Send On Behalf Permissions to Mailbox [$($mailbox.UserPrincipalName)]. Result count: $(($sendOnBehalfPermissions | Measure-Object).Count)"
         }
-        catch {
-            throw "Error querying Send On Behalf Permissions to Mailbox [$($mailbox.UserPrincipalName)]. Error: $_"
-        }
-        #endregion Get objects with Send On Behalf to Shared Mailbox
-
-        
     }
+
+    Write-Information "Gathered permissions ($($systemPermissionOptions -Join ',')) for each mailbox. Result count: Full Access: $(($fullAccessUsers | Measure-Object).Count). Send As: $(($sendAsUsers | Measure-Object).Count). Send on Behalf: $(($sendOnBehalfUsers | Measure-Object).Count)"
 }
 finally {
     Disconnect-ExchangeOnline -Confirm:$false
