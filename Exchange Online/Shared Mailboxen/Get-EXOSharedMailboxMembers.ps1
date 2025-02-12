@@ -815,6 +815,18 @@ $counter = 0
 
 foreach ($person in $expandedPersons) {
     $counter++
+
+    # Logging percentage of the script 
+    if ($counter -eq $logPoints[0]) {
+        Write-information "Status: 25% ($counter of $totalUsers) users processed."
+    }
+    elseif ($counter -eq $logPoints[1]) {
+        Write-information "Status: 50% ($counter of $totalUsers) users processed."
+    }
+    elseif ($counter -eq $logPoints[2]) {
+        Write-information "Status: 75% ($counter of $totalUsers) users processed."
+    }
+
     $personCorrelationProperty = $personCorrelationAttribute.replace(".", "")
     $personCorrelationValue = $person.$personCorrelationProperty
     if ($null -eq $personCorrelationValue) {
@@ -1156,31 +1168,24 @@ foreach ($person in $expandedPersons) {
 
         [void]$personPermissions.Add($record)
     }
-    # Logging percentage of the script 
-    if ($counter -eq $logPoints[0]) {
-        Write-information "Status: 25% ($counter of $totalUsers) users processed."
-    }
-    elseif ($counter -eq $logPoints[1]) {
-        Write-information "Status: 50% ($counter of $totalUsers) users processed."
-    }
-    elseif ($counter -eq $logPoints[2]) {
-        Write-information "Status: 75% ($counter of $totalUsers) users processed."
-    }
 }
 
 #region security logging exports
 if (($personsWithoutCorrelationValue | Measure-Object).Count -gt 0) {
+    Write-Information "Exporting [$(($personsWithoutCorrelationValue | Measure-Object).Count)] personsWithoutCorrelationValue to CSV..." -InformationAction Continue
     $personsWithoutCorrelationValue | Export-Csv -Path "$($exportPath)personsWithoutCorrelationValue.csv" -Delimiter ";" -Encoding UTF8 -NoTypeInformation -Force
 }
 
 if (($personsWithoutUser | Measure-Object).Count -gt 0) {
+    Write-Information "Exporting [$(($personsWithoutUser | Measure-Object).Count)] personsWithoutUser to CSV..." -InformationAction Continue
     $personsWithoutUser | Export-Csv -Path "$($exportPath)personsWithoutUser.csv" -Delimiter ";" -Encoding UTF8 -NoTypeInformation -Force
 }
 
 if (($personsWithoutPermissions | Measure-Object).Count -gt 0) {
+    Write-Information "Exporting [$(($personsWithoutPermissions | Measure-Object).Count)] personsWithoutPermissions to CSV..." -InformationAction Continue
     $personsWithoutPermissions | Export-Csv -Path "$($exportPath)personsWithoutPermissions.csv" -Delimiter ";" -Encoding UTF8 -NoTypeInformation -Force
 }
 #endregion
 
-Write-Information "Exporting data to CSV..." -InformationAction Continue
+Write-Information "Exporting [$(($personPermissions | Measure-Object).Count)] personPermissions for [$(($personPermissions | Select-Object -Property displayName, source -Unique | Measure-Object).Count)] persons to CSV..." -InformationAction Continue
 $personPermissions | Export-Csv -Path "$($exportPath)personPermissions.csv" -Delimiter ";" -Encoding UTF8 -NoTypeInformation -Force
