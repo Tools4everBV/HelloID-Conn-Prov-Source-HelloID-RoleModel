@@ -587,7 +587,7 @@ if ($IncludeNestedGroupMemberships -eq $true) {
             }
         }
 
-        Write-Information "Gathered group memberships for each group. Result count: $(($UsersWithMemberships | Measure-Object).Count)" -InformationAction Continue
+        Write-Information "Gathered group memberships for each group. Result count: $(($GroupsWithMemberships | Measure-Object).Count)" -InformationAction Continue
     }
     catch {
         Write-Error $_.Exception
@@ -652,22 +652,24 @@ try {
                 [void]$UsersWithMemberships.Add($UserCustomObject)
 
                 if ($IncludeNestedGroupMemberships -eq $true) {
-                    if ($groupsWithMemberOf.ContainsKey("$($userMembership.id)")) { 
-                        $groupMembers = $groupsWithMemberOf["$($userMembership.id)"]
+                    if ($null -ne $groupsWithMemberOf) {
+                        if ($groupsWithMemberOf.ContainsKey("$($userMembership.id)")) { 
+                            $groupMembers = $groupsWithMemberOf["$($userMembership.id)"]
 
-                        foreach ($groupMember in $groupMembers) {
-                            # Create custom object for user with group membership
-                            $UserCustomObject = [PSCustomObject]@{
-                                UserName        = $User.displayName
-                                UserGuid        = $User.id
-                                GroupName       = $groupMember.ChildGroupName
-                                GroupGuid       = $groupMember.ChildGroupGuid
-                                IsNested        = $true
-                                "Member/Parent" = $groupMember.ParentGroupName
+                            foreach ($groupMember in $groupMembers) {
+                                # Create custom object for user with group membership
+                                $UserCustomObject = [PSCustomObject]@{
+                                    UserName        = $User.displayName
+                                    UserGuid        = $User.id
+                                    GroupName       = $groupMember.ChildGroupName
+                                    GroupGuid       = $groupMember.ChildGroupGuid
+                                    IsNested        = $true
+                                    "Member/Parent" = $groupMember.ParentGroupName
+                                }
+
+                                # Add the custom object for user with group membership to list of all users with their group memberships
+                                [void]$UsersWithMemberships.Add($UserCustomObject)
                             }
-    
-                            # Add the custom object for user with group membership to list of all users with their group memberships
-                            [void]$UsersWithMemberships.Add($UserCustomObject)
                         }
                     }
                 }
