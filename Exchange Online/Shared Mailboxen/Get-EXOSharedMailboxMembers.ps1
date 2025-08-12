@@ -5,13 +5,14 @@
 
 .NOTES
     Author: Ramon Schouten
-    Editor: Jeroen Smit
+    Editor: Remco Houthuijzen
     Created At: 2023-08-03
-    Last Edit: 2024-03-25
+    Last Edit: 2025-08-12
     Version 1.0 - RS - initial release (inclduing status active for the employee and support for no startdate per employee)
     Version 1.1 - JS - Added reporting for persons with no correlation attribute, persons with no account or accounts with no permissions
     Version 1.2 - RH - Added dummy group option
     Version 1.2.1 - JS - Fix column 'Status' is removed from export 'entilements.csv'
+    Version 1.3 (RH) - added certificate support
 #>
 
 # Specify whether to output the logging
@@ -19,11 +20,16 @@ $VerbosePreference = "SilentlyContinue"
 $InformationPreference = "Continue"
 $WarningPreference = "Continue"
 
+# Define authorization method
+$CertificateAuthentication = $false # or $true
+
 # Used to connect to Exchange Online using Access Token
-$AADOrganization = "<customer domain>.onmicrosoft.com"  # always .onmicrosoft.com
-$AADtenantID = "<AZURE_TENANT_ID>"
-$AADAppId = "<AZURE_APP_ID>"
-$AADAppSecret = "<AZURE_APP_SECRET>"
+$EntraIDOrganization = "<customer domain>.onmicrosoft.com"  # always .onmicrosoft.com
+$EntraIDtenantID = "<EntraID_TENANT_ID>"
+$EntraIDAppId = "<EntraID_APP_ID>"
+$EntraIDAppSecret = "<EntraID_APP_SECRET>"
+$AppCertificateBase64String = "<Certificate_Base64_String>"
+$AppCertificatePassword = "<Certificate_Password>"
 
 # Toggle to include nested groupmemberships in Shared Mailboxes (up to a maximum of 1 layer deep)
 $includeNestedGroupMemberships = $true # or $false
@@ -90,6 +96,135 @@ function Write-Information {
     else {
         # Use HelloID logging
         Hid-Write-Status -Message $Message -Event "Information"
+    }
+}
+
+function Get-MSEntraCertificate {
+    [CmdletBinding()]
+    param(
+        [parameter(Mandatory)]
+        [string]
+        $CertificateBase64String,
+
+        [parameter(Mandatory)]
+        [string]
+        $CertificatePassword
+    )
+    try {        
+        $rawCertificate = [system.convert]::FromBase64String($CertificateBase64String)
+        # $certificate = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($rawCertificate, $CertificatePassword, [System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]::Exportable)
+        $certificate = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($rawCertificate, $CertificatePassword, [System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]::Exportable -bor [System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]::EphemeralKeySet)
+        Write-Output $certificate
+    }
+    catch {
+        $PSCmdlet.ThrowTerminatingError($_)
+    }
+}
+
+function Get-MSEntraAccessToken {
+    [CmdletBinding()]
+    [OutputType([System.Collections.Generic.Dictionary[[String], [String]]])]
+    param(
+        [Parameter(Mandatory)]
+        $Certificate,
+
+        [parameter(Mandatory)]
+        [string]
+        $TenantID,
+
+        [parameter(Mandatory)]
+        [string]
+        $AppId
+    )
+    try {
+        # Get the DER encoded bytes of the certificate
+        $derBytes = $Certificate.RawData
+
+        # Compute the SHA-256 hash of the DER encoded bytes
+        $sha256 = [System.Security.Cryptography.SHA256]::Create()
+        $hashBytes = $sha256.ComputeHash($derBytes)
+        $base64Thumbprint = [System.Convert]::ToBase64String($hashBytes).Replace('+', '-').Replace('/', '_').Replace('=', '')
+
+        # Create a JWT (JSON Web Token) header
+        $header = @{
+            'alg'      = 'RS256'
+            'typ'      = 'JWT'
+            'x5t#S256' = $base64Thumbprint
+        } | ConvertTo-Json
+        $base64Header = [System.Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($header))
+
+        # Calculate the Unix timestamp (seconds since 1970-01-01T00:00:00Z) for 'exp', 'nbf' and 'iat'
+        $currentUnixTimestamp = [math]::Round(((Get-Date).ToUniversalTime() - ([datetime]'1970-01-01T00:00:00Z').ToUniversalTime()).TotalSeconds)
+
+        # Create a JWT payload
+        $payload = [Ordered]@{
+            'iss' = "$($AppId)"
+            'sub' = "$($AppId)"
+            'aud' = "https://login.microsoftonline.com/$($TenantID)/oauth2/token"
+            'exp' = ($currentUnixTimestamp + 3600) # Expires in 1 hour
+            'nbf' = ($currentUnixTimestamp - 300) # Not before 5 minutes ago
+            'iat' = $currentUnixTimestamp
+            'jti' = [Guid]::NewGuid().ToString()
+        } | ConvertTo-Json
+        $base64Payload = [System.Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($payload)).Replace('+', '-').Replace('/', '_').Replace('=', '')
+
+        #################################################################################################################################################
+        # Old CAPI code
+        #################################################################################################################################################
+        #   # Extract the private key from the certificate
+        #     $rsaPrivate = $Certificate.PrivateKey
+        #     $rsa = [System.Security.Cryptography.RSACryptoServiceProvider]::new()
+        #     $rsa.ImportParameters($rsaPrivate.ExportParameters($true))
+
+        #     # Sign the JWT
+        #     $signatureInput = "$base64Header.$base64Payload"
+        #     $signature = $rsa.SignData([Text.Encoding]::UTF8.GetBytes($signatureInput), 'SHA256')
+        #     $base64Signature = [System.Convert]::ToBase64String($signature).Replace('+', '-').Replace('/', '_').Replace('=', '')
+
+        #     # Create the JWT token
+        #     $jwtToken = "$($base64Header).$($base64Payload).$($base64Signature)"
+        #################################################################################################################################################
+
+        # This also supports CNG instead of only CAPI 
+        $rsaPrivate = [System.Security.Cryptography.X509Certificates.RSACertificateExtensions]::GetRSAPrivateKey($Certificate)
+        $signatureInput = "$base64Header.$base64Payload"
+        $bytesToSign = [Text.Encoding]::UTF8.GetBytes($signatureInput)
+        $hashAlgorithm = [System.Security.Cryptography.HashAlgorithmName]::SHA256
+        $padding = [System.Security.Cryptography.RSASignaturePadding]::Pkcs1
+        $signature = $rsaPrivate.SignData($bytesToSign, $hashAlgorithm, $padding)
+        $base64Signature = [System.Convert]::ToBase64String($signature).Replace('+', '-').Replace('/', '_').Replace('=', '')
+        $jwtToken = "$base64Header.$base64Payload.$base64Signature"
+
+        $createEntraAccessTokenBody = @{
+            grant_type            = 'client_credentials'
+            client_id             = $AppId
+            client_assertion_type = 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer'
+            client_assertion      = $jwtToken
+            resource              = 'https://graph.microsoft.com'
+        }
+
+        $createEntraAccessTokenSplatParams = @{
+            Uri         = "https://login.microsoftonline.com/$($TenantID)/oauth2/token"
+            Body        = $createEntraAccessTokenBody
+            Method      = 'POST'
+            ContentType = 'application/x-www-form-urlencoded'
+            Verbose     = $false
+            ErrorAction = 'Stop'
+        }
+
+        $createEntraAccessTokenResponse = Invoke-RestMethod @createEntraAccessTokenSplatParams
+        $accessToken = $createEntraAccessTokenResponse.access_token
+        $headers = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
+        $headers.Add('Authorization', "Bearer $accesstoken")
+        $headers.Add('Accept', 'application/json')
+        $headers.Add('Content-Type', 'application/json')
+        # Needed to filter on specific attributes (https://docs.microsoft.com/en-us/graph/aad-advanced-queries)
+        $headers.Add('ConsistencyLevel', 'eventual')
+
+        Write-Output $headers  
+    }
+    catch {
+        $PSCmdlet.ThrowTerminatingError($_)
     }
 }
 
@@ -379,7 +514,16 @@ Write-Information "Gathering users..." -InformationAction Continue
 
 # Get Entra ID users
 try {
-    $entraHeaders = New-AuthorizationHeaders -TenantId $AADtenantID -ClientId $AADAppId -ClientSecret $AADAppSecret
+    if ($CertificateAuthentication -eq $true) {
+        $certificate = Get-MSEntraCertificate -CertificateBase64String $AppCertificateBase64String -CertificatePassword $AppCertificatePassword
+        $entraHeaders = Get-MSEntraAccessToken -Certificate $certificate -TenantID $EntraIDtenantID -AppId $EntraIDAppId
+        Write-Information "Successfully created headers using certificate authentication"
+    }
+    else {
+        $entraHeaders = New-AuthorizationHeaders -TenantId $EntraIDtenantID -ClientId $EntraIDAppId -ClientSecret $EntraIDAppSecret
+        Write-Information "Successfully created headers using app secret"
+    }
+
 
     [System.Collections.ArrayList]$entraUsers = @()
 
@@ -436,47 +580,64 @@ Write-Information "Connecting to Exchange Online..."
 try {
     #region Connect to Exchange Online
     try {
-        # Create Access Token to connect to Exchange Online
-        Write-Verbose "Creating Access Token"
+        if ($CertificateAuthentication -eq $true) {
+            $certificate = Get-MSEntraCertificate -CertificateBase64String $AppCertificateBase64String -CertificatePassword $AppCertificatePassword
+            $exchangeSessionParams = @{
+                Organization     = $EntraIDOrganization
+                AppID            = $EntraIDAppId
+                Certificate      = $certificate
+                ShowBanner       = $false
+                ShowProgress     = $false
+                TrackPerformance = $false
+                ErrorAction      = 'Stop'
+            }
+            $exchangeSession = Connect-ExchangeOnline @exchangeSessionParams
 
-        $exoBaseUri = "https://login.microsoftonline.com/"
-        $exoAuthUri = $exoBaseUri + "$AADTenantId/oauth2/token"
+            Write-Information "Successfully connected to Exchange Online with certificate authentication"
+        }
+        else {
+            # Create Access Token to connect to Exchange Online
+            Write-Verbose "Creating Access Token"
+
+            $exoBaseUri = "https://login.microsoftonline.com/"
+            $exoAuthUri = $exoBaseUri + "$EntraIDtenantID/oauth2/token"
         
-        $exoBody = @{
-            Grant_type    = "client_credentials"
-            Client_id     = "$AADAppID"
-            Client_secret = "$AADAppSecret"
-            Resource      = "https://outlook.office365.com"
+            $exoBody = @{
+                Grant_type    = "client_credentials"
+                Client_id     = "$EntraIDAppId"
+                Client_secret = "$EntraIDAppSecret"
+                Resource      = "https://outlook.office365.com"
+            }
+
+            $exoAuthSplatWebRequest = @{
+                Uri             = $exoAuthUri
+                Method          = "POST"
+                Body            = $exoBody
+                ContentType     = "application/x-www-form-urlencoded"
+                UseBasicParsing = $true
+            }
+            $exoResponse = Invoke-RestMethod @exoAuthSplatWebRequest
+            $exoAccessToken = $exoResponse.access_token
+
+            # Connect to Exchange Online in an unattended scripting scenario using Access Token
+            Write-Verbose "Connecting to Exchange Online Tenant [$($EntraIDtenantID)] and Organization [$($EntraIDOrganization)] using App ID [$($EntraIDAppId)]"
+
+            $exchangeSessionParams = @{
+                Organization     = $EntraIDOrganization
+                AppID            = $EntraIDAppId
+                AccessToken      = $exoAccessToken
+                ShowBanner       = $false
+                ShowProgress     = $false
+                TrackPerformance = $false
+                ErrorAction      = 'Stop'
+            }
+            $exchangeSession = Connect-ExchangeOnline @exchangeSessionParams
+
+            Write-Information "Successfully connected to Exchange Online with app secret"
         }
-
-        $exoAuthSplatWebRequest = @{
-            Uri             = $exoAuthUri
-            Method          = "POST"
-            Body            = $exoBody
-            ContentType     = "application/x-www-form-urlencoded"
-            UseBasicParsing = $true
-        }
-        $exoResponse = Invoke-RestMethod @exoAuthSplatWebRequest
-        $exoAccessToken = $exoResponse.access_token
-
-        # Connect to Exchange Online in an unattended scripting scenario using Access Token
-        Write-Verbose "Connecting to Exchange Online Tenant [$($AADTenantId)] and Organization [$($AADOrganization)] using App ID [$($AADAppID)]"
-
-        $exchangeSessionParams = @{
-            Organization     = $AADOrganization
-            AppID            = $AADAppID
-            AccessToken      = $exoAccessToken
-            ShowBanner       = $false
-            ShowProgress     = $false
-            TrackPerformance = $false
-            ErrorAction      = 'Stop'
-        }
-        $exchangeSession = Connect-ExchangeOnline @exchangeSessionParams
-
-        Write-Information "Successfully connected to Exchange Online"
     }
     catch {
-        throw "Error connecting to Exchange Online Tenant [$($AADTenantId)] and Organization [$($AADOrganization)] using App ID [$($AADAppID)]. Error: $_"
+        throw "Error connecting to Exchange Online Tenant [$($EntraIDtenantID)] and Organization [$($EntraIDOrganization)] using App ID [$($EntraIDAppId)]. Error: $_"
     }
     #endregion Connect to Exchange Online
 
