@@ -1,20 +1,10 @@
 # HelloID-Conn-Prov-Source-HelloID-RoleModel
 
-| :information_source: Information |
-|:---------------------------|
-| This repository contains the connector and configuration code only. The implementer is responsible to acquire the connection details such as username, password, certificate, etc. You might even need to sign a contract or agreement with the supplier before implementing this connector. Please contact the client's application manager to coordinate the connector requirements.       |
+> [!IMPORTANT]
+> This repository contains the connector and configuration code only. The implementer is responsible to acquire the connection details such as username, password, certificate, etc. You might even need to sign a contract or agreement with the supplier before implementing this connector. Please contact the client's application manager to coordinate the connector requirements.    |
 
-<br />
-
-<!-- Version -->
-## Version
-| Version | Description | Date |
-| - | - | - |
-| 1.0.0   | Initial release | 2023/04/17  |
-
-> __This is the initial version, please let us know about any bugs/features!__
-## Warning: 
-With this Application Registration you can see a lot of data. Be careful with de credentials.
+> [!WARNING]
+> With this Application Registration you can see a lot of data. Be careful with de credentials.
 
 <!-- Description -->
 ## Description
@@ -25,8 +15,6 @@ This script is used by middle to big organizations. This overview offers insight
 <!-- TABLE OF CONTENTS -->
 ## Table of Contents
 - [HelloID-Conn-Prov-Source-HelloID-RoleModel](#helloid-conn-prov-source-helloid-rolemodel)
-  - [Version](#version)
-  - [Warning:](#warning)
   - [Description](#description)
   - [Table of Contents](#table-of-contents)
   - [Limitation on the scripts](#limitation-on-the-scripts)
@@ -68,16 +56,19 @@ The PowerShell script "Get-EntraIDPersonGroupMembers.ps1" contains a complete Po
 
 ## Update connection and configuration details
 ### Details Get-EntraIDPersonGroupMembers
-| Variable name                 | Description                                                             | Example value                   |
-| ----------------------------- | ----------------------------------------------------------------------- | ------------------------------- |
-| $AADtenantID                  | API Key value of your HelloID environment                               | ********                        |
-| $AADAppId                     | API secret value of your HelloID environment                            | ********                        |
-| $AADAppSecret                 | API secret value of your HelloID environment                            | ********                        |
-| $exportPath                   | The path where the csv file will be exported (Make sure the exportPath contains a trailing \ in Windows or / in Unix/MacOS environments at the end of the path)   | C:\HelloID\Provisioning\RoleMining_export\PersonGroupMembers\  |
-| $evaluationSystemName         | The name of the system on which to check the permissions in the evaluation (Only required when using the evaluation report) | Microsoft Active Directory |
-| $entitlementsSystemName       | The name of the system on which to check the permissions in the evaluation (Only required when using the entitlements report) | Microsoft Active Directory |
-| $personCorrelationAttribute   | The person attribute used to correlate a person to an account           | ExternalId                      |
-| $userCorrelationAttribute     | The user attribute used to correlate a person to an account             | employeeId                      |
+| Variable name               | Description                                                                                                                                                     | Example value                                                 |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| $CertificateAuthentication  | set to `$true` when authenticating with a certificate                                                                                                           | `$true` or `$false`                                           |
+| $EntraIDtenantID            | EntraID tenant id                                                                                                                                               | ********                                                      |
+| $EntraIDAppId               | EntraID app id                                                                                                                                                  | ********                                                      |
+| $EntraIDAppSecret           | EntraID app secret, only needed when connecting with a secret                                                                                                   | ********                                                      |
+| $AppCertificateBase64String | Base64 string of your certificate, only needed when connecting with a certificate                                                                               | ********                                                      |
+| $AppCertificatePassword     | Password of your certificate, only needed when connecting with a certificate                                                                                    | ********                                                      |
+| $exportPath                 | The path where the csv file will be exported (Make sure the exportPath contains a trailing \ in Windows or / in Unix/MacOS environments at the end of the path) | C:\HelloID\Provisioning\RoleMining_export\PersonGroupMembers\ |
+| $evaluationSystemName       | The name of the system on which to check the permissions in the evaluation (Only required when using the evaluation report)                                     | Microsoft Active Directory                                    |
+| $entitlementsSystemName     | The name of the system on which to check the permissions in the evaluation (Only required when using the entitlements report)                                   | Microsoft Active Directory                                    |
+| $personCorrelationAttribute | The person attribute used to correlate a person to an account                                                                                                   | ExternalId                                                    |
+| $userCorrelationAttribute   | The user attribute used to correlate a person to an account                                                                                                     | employeeId                                                    |
 
 
 ## Introduction
@@ -135,10 +126,10 @@ There are multiple ways to authenticate to the Graph API with each has its own p
 ### Connection settings
 The following settings are required to connect to the API.
 
-| Setting     | Description |
-| ------------ | ----------- |
-| EntraID Tenant ID | Id of the Entra tenant |
-| EntraID App ID | Id of the Entra app |
+| Setting            | Description                                               |
+| ------------------ | --------------------------------------------------------- |
+| EntraID Tenant ID  | Id of the Entra tenant                                    |
+| EntraID App ID     | Id of the Entra app                                       |
 | EntraID App Secret | Secret of the Entra app. This is the Value of the secret. |
 
 # HelloID Docs
