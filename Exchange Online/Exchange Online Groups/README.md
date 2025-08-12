@@ -1,20 +1,10 @@
 # HelloID-Conn-Prov-Source-HelloID-RoleModel
 
-| :information_source: Information |
-|:---------------------------|
-| This repository contains the connector and configuration code only. The implementer is responsible to acquire the connection details such as username, password, certificate, etc. You might even need to sign a contract or agreement with the supplier before implementing this connector. Please contact the client's application manager to coordinate the connector requirements.       |
+> [!IMPORTANT]
+> This repository contains the connector and configuration code only. The implementer is responsible to acquire the connection details such as username, password, certificate, etc. You might even need to sign a contract or agreement with the supplier before implementing this connector. Please contact the client's application manager to coordinate the connector requirements.    |
 
-<br />
-
-<!-- Version -->
-## Version
-| Version | Description | Date |
-| - | - | - |
-| 1.0.0   | Initial release | 2025/01/29  |
-
-> __This is the initial version, please let us know about any bugs/features!__
-## Warning: 
-With this Application Registration you can see a lot of data. Be careful with de credentials.
+> [!WARNING]
+> With this Application Registration you can see a lot of data. Be careful with de credentials.
 
 <!-- Description -->
 ## Description
@@ -23,8 +13,6 @@ This Powershell script generates an overview to support building a role model
 <!-- TABLE OF CONTENTS -->
 ## Table of Contents
 - [HelloID-Conn-Prov-Source-HelloID-RoleModel](#helloid-conn-prov-source-helloid-rolemodel)
-  - [Version](#version)
-  - [Warning:](#warning)
   - [Description](#description)
   - [Table of Contents](#table-of-contents)
   - [Limitation on the scripts](#limitation-on-the-scripts)
@@ -66,16 +54,19 @@ The PowerShell scripts "Get-EXOSharedMailboxMembers.ps1" contains a complete Pow
 
 ## Update connection and configuration details
 ### Details Get-EXOSharedMailboxMembers
-| Variable name                 | Description                                                             | Example value                   |
-| ----------------------------- | ----------------------------------------------------------------------- | ------------------------------- |
-| $EntraIDtenantID              | API Key value of your HelloID environment                               | ********                        |
-| $EntraIDAppId                 | API secret value of your HelloID environment                            | ********                        |
-| $EntraIDAppSecret             | API secret value of your HelloID environment                            | ********                        |
-| $exportPath                   | The path where the csv file will be exported (Make sure the exportPath contains a trailing \ in Windows or / in Unix/MacOS environments)   | C:\HelloID\RoleminingExchangeOnline\  |
-| $evaluationSystemName         | The name of the system on which to check the permissions in the evaluation (Only required when using the evaluation report) | Exchange Online |
-| $entitlementsSystemName       | The name of the system on which to check the permissions in the evaluation (Only required when using the entitlements report) | Exchange Online |
-| $personCorrelationAttribute   | The person attribute used to correlate a person to an account           | ExternalId                      |
-| $userCorrelationAttribute     | The user attribute used to correlate a person to an account             | employeeId                      |
+| Variable name               | Description                                                                                                                              | Example value                        |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
+| $CertificateAuthentication  | set to `$true` when authenticating with a certificate                                                                                    | `$true` or `$false`                  |
+| $EntraIDtenantID            | EntraID tenant id                                                                                                                        | ********                             |
+| $EntraIDAppId               | EntraID app id                                                                                                                           | ********                             |
+| $EntraIDAppSecret           | EntraID app secret, only needed when connecting with a secret                                                                            | ********                             |
+| $AppCertificateBase64String | Base64 string of your certificate, only needed when connecting with a certificate                                                        | ********                             |
+| $AppCertificatePassword     | Password of your certificate, only needed when connecting with a certificate                                                             | ********                             |
+| $exportPath                 | The path where the csv file will be exported (Make sure the exportPath contains a trailing \ in Windows or / in Unix/MacOS environments) | C:\HelloID\RoleminingExchangeOnline\ |
+| $evaluationSystemName       | The name of the system on which to check the permissions in the evaluation (Only required when using the evaluation report)              | Exchange Online                      |
+| $entitlementsSystemName     | The name of the system on which to check the permissions in the evaluation (Only required when using the entitlements report)            | Exchange Online                      |
+| $personCorrelationAttribute | The person attribute used to correlate a person to an account                                                                            | ExternalId                           |
+| $userCorrelationAttribute   | The user attribute used to correlate a person to an account                                                                              | employeeId                           |
 
 
 <!-- GETTING STARTED -->
@@ -148,11 +139,11 @@ For more information about the permissions, please see the Microsoft docs:
 ### Connection settings
 The following settings are required to connect to the API.
 
-| Setting     | Description |
-| ------------ | ----------- |
-| Azure AD Tenant ID | Id of the Azure tenant |
-| Azure AD App ID | Id of the Azure app |
-| Azure AD App Secret | Secret of the Azure app. Needs to be the value |
+| Setting            | Description                                               |
+| ------------------ | --------------------------------------------------------- |
+| EntraID Tenant ID  | Id of the Entra tenant                                    |
+| EntraID App ID     | Id of the Entra app                                       |
+| EntraID App Secret | Secret of the Entra app. This is the Value of the secret. |
 
 # HelloID Docs
 The official HelloID documentation can be found at: https://docs.helloid.com/
