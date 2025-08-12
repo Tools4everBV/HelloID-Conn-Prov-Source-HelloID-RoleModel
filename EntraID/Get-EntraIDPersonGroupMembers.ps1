@@ -24,18 +24,12 @@ $WarningPreference = "Continue"
 # Define authorization method
 $CertificateAuthentication = $false # or $true
 
-# Used to connect to EntraID Graph API, specify the tenant id & app id 
+# Used to connect to EntraID Graph API, specify the tenant id, app id & app secret
 $EntraIDtenantID = "<EntraID_TENANT_ID>"
 $EntraIDAppId = "<EntraID_APP_ID>"
-
-if ($CertificateAuthentication -eq $true) {
-    $AppCertificateBase64String = "<Certificate_Base64_String>"
-    $AppCertificatePassword = "<Certificate_Password>"
-}
-else {
-    # Used to connect to EntraID Graph API, specify the app secret
-    $EntraIDAppSecret = "<EntraID_APP_SECRET>"
-}
+$EntraIDAppSecret = "<EntraID_APP_SECRET>"
+$AppCertificateBase64String = "<Certificate_Base64_String>"
+$AppCertificatePassword = "<Certificate_Password>"
 
 # Toggle to include nested groupmemberships (up to a maximum of 1 layer deep)
 $includeNestedGroupMemberships = $true # or $false
