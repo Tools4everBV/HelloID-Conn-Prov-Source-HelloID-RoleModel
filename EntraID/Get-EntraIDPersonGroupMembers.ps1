@@ -781,6 +781,7 @@ try {
         }
 
         #region Get user's memberships
+        [System.Collections.ArrayList]$userMemberships = @()
         # API docs: https://learn.microsoft.com/en-us/graph/api/user-list-memberof?view=graph-rest-1.0&tabs=http
         $getEntraIDUserMembershipsSplatParams = @{
             Uri         = "https://graph.microsoft.com/v1.0/users/$($user.id)/memberOf"
@@ -792,7 +793,19 @@ try {
 
         $getEntraIDUserMembershipsResponse = $null
         $getEntraIDUserMembershipsResponse = Invoke-RestMethod @getEntraIDUserMembershipsSplatParams
-        $userMemberships = $getEntraIDUserMembershipsResponse.Value
+        foreach ($SecurityGroup in $getEntraIDUserMembershipsResponse.value) { $null = $userMemberships.Add($SecurityGroup) }
+
+        while (![string]::IsNullOrEmpty($getEntraIDUserMembershipsResponse.'@odata.nextLink')) {
+            $baseUri = "https://graph.microsoft.com/"
+            $splatWebRequest = @{
+                Uri     = $getEntraIDUserMembershipsResponse.'@odata.nextLink'
+                Headers = $headers
+                Method  = 'GET'
+            }
+            $getEntraIDUserMembershipsResponse = $null
+            $getEntraIDUserMembershipsResponse = Invoke-RestMethod @splatWebRequest -Verbose:$false
+            foreach ($SecurityGroup in $getEntraIDUserMembershipsResponse.value) { $null = $userMemberships.Add($SecurityGroup) }
+        }
         #endregion
 
         foreach ($userMembership in $userMemberships) {
