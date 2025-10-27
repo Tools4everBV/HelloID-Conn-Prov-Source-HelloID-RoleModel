@@ -5,25 +5,31 @@
 
 .NOTES
     Author: Ramon Schouten
-    Editor: Jeroen Smit
+    Editor: Remco Houthuijzen
     Created At: 2023-04-17
-    Last Edit: 2024-03-25
+    Last Edit: 2025-08-12
     Version 1.0 (RS) - initial release (inclduing status active for the employee and support for no startdate per employee)
     Version 1.1 (JS) - added reporting for persons with no correlation attribute, persons with no account or accounts with no permissions
     Version 1.2 (RH) - added nesting support
     Version 1.2.1 (JS) - fix column 'Status' is removed from export 'entilements.csv'
     Version 1.2.2 (JS) - fix: calculate dummy permission even if person has no other permissions
     Version 1.2.3 (RS) - fix: fix nesting Entra ID groups
+    Version 1.3 (RH) - added certificate support
 #>
 # Specify whether to output the logging
 $VerbosePreference = 'SilentlyContinue'
 $InformationPreference = "Continue"
 $WarningPreference = "Continue"
 
-# Used to connect to EntraID Graph API, specify the tenant id, app id & secret
+# Define authorization method
+$CertificateAuthentication = $false # or $true
+
+# Used to connect to EntraID Graph API, specify the tenant id, app id & app secret
 $EntraIDtenantID = "<EntraID_TENANT_ID>"
 $EntraIDAppId = "<EntraID_APP_ID>"
 $EntraIDAppSecret = "<EntraID_APP_SECRET>"
+$AppCertificateBase64String = "<Certificate_Base64_String>"
+$AppCertificatePassword = "<Certificate_Password>"
 
 # Toggle to include nested groupmemberships (up to a maximum of 1 layer deep)
 $includeNestedGroupMemberships = $true # or $false
@@ -81,6 +87,135 @@ function Write-Information {
     else {
         # Use HelloID logging
         Hid-Write-Status -Message $Message -Event "Information"
+    }
+}
+
+function Get-MSEntraCertificate {
+    [CmdletBinding()]
+    param(
+        [parameter(Mandatory)]
+        [string]
+        $CertificateBase64String,
+
+        [parameter(Mandatory)]
+        [string]
+        $CertificatePassword
+    )
+    try {        
+        $rawCertificate = [system.convert]::FromBase64String($CertificateBase64String)
+        # $certificate = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($rawCertificate, $CertificatePassword, [System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]::Exportable)
+        $certificate = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($rawCertificate, $CertificatePassword, [System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]::Exportable -bor [System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]::EphemeralKeySet)
+        Write-Output $certificate
+    }
+    catch {
+        $PSCmdlet.ThrowTerminatingError($_)
+    }
+}
+
+function Get-MSEntraAccessToken {
+    [CmdletBinding()]
+    [OutputType([System.Collections.Generic.Dictionary[[String], [String]]])]
+    param(
+        [Parameter(Mandatory)]
+        $Certificate,
+
+        [parameter(Mandatory)]
+        [string]
+        $TenantID,
+
+        [parameter(Mandatory)]
+        [string]
+        $AppId
+    )
+    try {
+        # Get the DER encoded bytes of the certificate
+        $derBytes = $Certificate.RawData
+
+        # Compute the SHA-256 hash of the DER encoded bytes
+        $sha256 = [System.Security.Cryptography.SHA256]::Create()
+        $hashBytes = $sha256.ComputeHash($derBytes)
+        $base64Thumbprint = [System.Convert]::ToBase64String($hashBytes).Replace('+', '-').Replace('/', '_').Replace('=', '')
+
+        # Create a JWT (JSON Web Token) header
+        $header = @{
+            'alg'      = 'RS256'
+            'typ'      = 'JWT'
+            'x5t#S256' = $base64Thumbprint
+        } | ConvertTo-Json
+        $base64Header = [System.Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($header))
+
+        # Calculate the Unix timestamp (seconds since 1970-01-01T00:00:00Z) for 'exp', 'nbf' and 'iat'
+        $currentUnixTimestamp = [math]::Round(((Get-Date).ToUniversalTime() - ([datetime]'1970-01-01T00:00:00Z').ToUniversalTime()).TotalSeconds)
+
+        # Create a JWT payload
+        $payload = [Ordered]@{
+            'iss' = "$($AppId)"
+            'sub' = "$($AppId)"
+            'aud' = "https://login.microsoftonline.com/$($TenantID)/oauth2/token"
+            'exp' = ($currentUnixTimestamp + 3600) # Expires in 1 hour
+            'nbf' = ($currentUnixTimestamp - 300) # Not before 5 minutes ago
+            'iat' = $currentUnixTimestamp
+            'jti' = [Guid]::NewGuid().ToString()
+        } | ConvertTo-Json
+        $base64Payload = [System.Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($payload)).Replace('+', '-').Replace('/', '_').Replace('=', '')
+
+        #################################################################################################################################################
+        # Old CAPI code
+        #################################################################################################################################################
+        #   # Extract the private key from the certificate
+        #     $rsaPrivate = $Certificate.PrivateKey
+        #     $rsa = [System.Security.Cryptography.RSACryptoServiceProvider]::new()
+        #     $rsa.ImportParameters($rsaPrivate.ExportParameters($true))
+
+        #     # Sign the JWT
+        #     $signatureInput = "$base64Header.$base64Payload"
+        #     $signature = $rsa.SignData([Text.Encoding]::UTF8.GetBytes($signatureInput), 'SHA256')
+        #     $base64Signature = [System.Convert]::ToBase64String($signature).Replace('+', '-').Replace('/', '_').Replace('=', '')
+
+        #     # Create the JWT token
+        #     $jwtToken = "$($base64Header).$($base64Payload).$($base64Signature)"
+        #################################################################################################################################################
+
+        # This also supports CNG instead of only CAPI 
+        $rsaPrivate = [System.Security.Cryptography.X509Certificates.RSACertificateExtensions]::GetRSAPrivateKey($Certificate)
+        $signatureInput = "$base64Header.$base64Payload"
+        $bytesToSign = [Text.Encoding]::UTF8.GetBytes($signatureInput)
+        $hashAlgorithm = [System.Security.Cryptography.HashAlgorithmName]::SHA256
+        $padding = [System.Security.Cryptography.RSASignaturePadding]::Pkcs1
+        $signature = $rsaPrivate.SignData($bytesToSign, $hashAlgorithm, $padding)
+        $base64Signature = [System.Convert]::ToBase64String($signature).Replace('+', '-').Replace('/', '_').Replace('=', '')
+        $jwtToken = "$base64Header.$base64Payload.$base64Signature"
+
+        $createEntraAccessTokenBody = @{
+            grant_type            = 'client_credentials'
+            client_id             = $AppId
+            client_assertion_type = 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer'
+            client_assertion      = $jwtToken
+            resource              = 'https://graph.microsoft.com'
+        }
+
+        $createEntraAccessTokenSplatParams = @{
+            Uri         = "https://login.microsoftonline.com/$($TenantID)/oauth2/token"
+            Body        = $createEntraAccessTokenBody
+            Method      = 'POST'
+            ContentType = 'application/x-www-form-urlencoded'
+            Verbose     = $false
+            ErrorAction = 'Stop'
+        }
+
+        $createEntraAccessTokenResponse = Invoke-RestMethod @createEntraAccessTokenSplatParams
+        $accessToken = $createEntraAccessTokenResponse.access_token
+        $headers = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
+        $headers.Add('Authorization', "Bearer $accesstoken")
+        $headers.Add('Accept', 'application/json')
+        $headers.Add('Content-Type', 'application/json')
+        # Needed to filter on specific attributes (https://docs.microsoft.com/en-us/graph/aad-advanced-queries)
+        $headers.Add('ConsistencyLevel', 'eventual')
+
+        Write-Output $headers  
+    }
+    catch {
+        $PSCmdlet.ThrowTerminatingError($_)
     }
 }
 
@@ -365,8 +500,16 @@ Write-Information "Gathering users..." -InformationAction Continue
 
 # Get Entra ID users
 try {
-    $headers = New-AuthorizationHeaders -TenantId $EntraIDtenantID -ClientId $EntraIDAppId -ClientSecret $EntraIDAppSecret
-
+    if ($CertificateAuthentication -eq $true) {
+        $certificate = Get-MSEntraCertificate -CertificateBase64String $AppCertificateBase64String -CertificatePassword $AppCertificatePassword
+        $headers = Get-MSEntraAccessToken -Certificate $certificate -TenantID $EntraIDtenantID -AppId $EntraIDAppId
+        Write-Information "Successfully created headers using certificate authentication"
+    }
+    else {
+        $headers = New-AuthorizationHeaders -TenantId $EntraIDtenantID -ClientId $EntraIDAppId -ClientSecret $EntraIDAppSecret
+        Write-Information "Successfully created headers using app secret"
+    }
+   
     [System.Collections.ArrayList]$entraIdUsers = @()
 
     # Define the properties to select (comma seperated)
@@ -420,7 +563,15 @@ Write-Information "Gathering groups..." -InformationAction Continue
 
 # Get Microsoft 365 Groups (Currently only Microsoft 365 and Security groups are supported by the Microsoft Graph API: https://docs.microsoft.com/en-us/graph/api/resources/groups-overview?view=graph-rest-1.0)
 try {
-    $headers = New-AuthorizationHeaders -TenantId $EntraIDtenantID -ClientId $EntraIDAppId -ClientSecret $EntraIDAppSecret
+    if ($CertificateAuthentication -eq $true) {
+        $certificate = Get-MSEntraCertificate -CertificateBase64String $AppCertificateBase64String -CertificatePassword $AppCertificatePassword
+        $headers = Get-MSEntraAccessToken -Certificate $certificate -TenantID $EntraIDtenantID -AppId $EntraIDAppId
+        Write-Information "Successfully created headers using certificate authentication"
+    }
+    else {
+        $headers = New-AuthorizationHeaders -TenantId $EntraIDtenantID -ClientId $EntraIDAppId -ClientSecret $EntraIDAppSecret
+        Write-Information "Successfully created headers using app secret"
+    }
 
     [System.Collections.ArrayList]$m365Groups = @()
 
@@ -474,7 +625,15 @@ catch {
 
 # Get Security Groups (Currently only Microsoft 365 and Security groups are supported by the Microsoft Graph API: https://docs.microsoft.com/en-us/graph/api/resources/groups-overview?view=graph-rest-1.0)
 try {
-    $headers = New-AuthorizationHeaders -TenantId $EntraIDtenantID -ClientId $EntraIDAppId -ClientSecret $EntraIDAppSecret
+    if ($CertificateAuthentication -eq $true) {
+        $certificate = Get-MSEntraCertificate -CertificateBase64String $AppCertificateBase64String -CertificatePassword $AppCertificatePassword
+        $headers = Get-MSEntraAccessToken -Certificate $certificate -TenantID $EntraIDtenantID -AppId $EntraIDAppId
+        Write-Information "Successfully created headers using certificate authentication"
+    }
+    else {
+        $headers = New-AuthorizationHeaders -TenantId $EntraIDtenantID -ClientId $EntraIDAppId -ClientSecret $EntraIDAppSecret
+        Write-Information "Successfully created headers using app secret"
+    }
 
     [System.Collections.ArrayList]$securityGroups = @()
 
@@ -622,6 +781,7 @@ try {
         }
 
         #region Get user's memberships
+        [System.Collections.ArrayList]$userMemberships = @()
         # API docs: https://learn.microsoft.com/en-us/graph/api/user-list-memberof?view=graph-rest-1.0&tabs=http
         $getEntraIDUserMembershipsSplatParams = @{
             Uri         = "https://graph.microsoft.com/v1.0/users/$($user.id)/memberOf"
@@ -633,7 +793,19 @@ try {
 
         $getEntraIDUserMembershipsResponse = $null
         $getEntraIDUserMembershipsResponse = Invoke-RestMethod @getEntraIDUserMembershipsSplatParams
-        $userMemberships = $getEntraIDUserMembershipsResponse.Value
+        foreach ($SecurityGroup in $getEntraIDUserMembershipsResponse.value) { $null = $userMemberships.Add($SecurityGroup) }
+
+        while (![string]::IsNullOrEmpty($getEntraIDUserMembershipsResponse.'@odata.nextLink')) {
+            $baseUri = "https://graph.microsoft.com/"
+            $splatWebRequest = @{
+                Uri     = $getEntraIDUserMembershipsResponse.'@odata.nextLink'
+                Headers = $headers
+                Method  = 'GET'
+            }
+            $getEntraIDUserMembershipsResponse = $null
+            $getEntraIDUserMembershipsResponse = Invoke-RestMethod @splatWebRequest -Verbose:$false
+            foreach ($SecurityGroup in $getEntraIDUserMembershipsResponse.value) { $null = $userMemberships.Add($SecurityGroup) }
+        }
         #endregion
 
         foreach ($userMembership in $userMemberships) {

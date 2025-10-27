@@ -1,6 +1,16 @@
 # Change Log
 All notable changes to this project will be documented in this file. The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## [1.4.0] - 2025-10-27
+
+### Added
+- **Certificate authentication support:**
+  - Added support for authenticating with a certificate (in addition to app secret) in the following scripts:
+    - `EntraID/Get-EntraIDPersonGroupMembers.ps1`
+    - `Exchange Online/Exchange Online Groups/Get-EXOGroupMembers.ps1`
+    - `Exchange Online/Shared Mailboxen/Get-EXOSharedMailboxMembers.ps1`
+  - Updated documentation and configuration instructions for certificate-based authentication.
+
 ## [1.3.2] - 2025-10-27
 
 ### Fixed
