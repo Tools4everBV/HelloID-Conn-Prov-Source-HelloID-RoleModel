@@ -1,7 +1,13 @@
 # Change Log
 All notable changes to this project will be documented in this file. The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## [1.3.2] - 2025-10-27
 
+### Fixed
+- Corrected evaluation report filename to `EvaluationReport.csv`.
+- Expanded contract properties included in reports.
+- Improved filtering for permissions and entitlements in AD scripts.
+- Fixed output and filtering logic for entitlements and permissions.
 
 ## [1.3.1] - 2025-10-27
 
