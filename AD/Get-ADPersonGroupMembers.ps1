@@ -27,7 +27,7 @@ $exportPath = "C:\HelloID\RoleminingAD\"
 
 # Optionally, specifiy the parameters below when you want to check the groups against an evaluation report
 # The location of the Evaluation Report Csv (needs to be manually exported from a HelloID Provisioning evaluation).
-$evaluationReportCsv = $exportPath + "Evaluation.csv"
+$evaluationReportCsv = $exportPath + "EvaluationReport.csv"
 # The name of the system on which to check the permissions in the evaluation (Required when using the evaluation report)
 $evaluationSystemName = "Microsoft Active Directory"
 # The name of the permission type on which to check the permissions in the evaluation (Required when using the entitlements report) (Default for AD and Azure AD is: Group Membership)
@@ -50,7 +50,7 @@ $vaultJson = $exportPath + "vault.json"
 # Specify the Person fields from the HelloID Vault export to include in the report (These have to match the exact name from he Vault.json export) - Must always contains personCorrelationAttribute!
 $personPropertiesToInclude = @($personCorrelationAttribute, "source.displayname")
 # Specify the Contracts fields from the HelloID Vault export to include in the report (These have to match the exact name from he Vault.json export)
-$contractPropertiesToInclude = @("costCenter.externalId", "Costcenter.name")
+$contractPropertiesToInclude = @("costCenter.externalId", "Costcenter.name", "Type.Description", "Type.Code", "Employer.Name", "Employer.ExternalId", "Organization.Name", "Organization.ExternalId")
 
 # Function designed for use when running a scheduled task in HelloID.
 # HelloID scheduled tasks do not log Write-Information by default, so this function
@@ -379,7 +379,7 @@ $personPermissions = New-Object System.Collections.ArrayList
 if (-not[string]::IsNullOrEmpty($evaluationReportCsv)) {
     Write-Information "Gathering data from evaluation report export..." -InformationAction Continue
     $evaluationReport = Import-Csv -Path $evaluationReportCsv -Delimiter "," -Encoding UTF8
-    $evaluationPermissions = $evaluationReport | Where-Object { $_.System -eq $evaluationSystemName -and $_.Type -eq "Permission" -and $_.Operation -eq "Grant" -and $_.EntitlementName -Like "$evaluationPermissionTypeName - *" }
+    $evaluationPermissions = $evaluationReport | Where-Object { $_.System -eq $evaluationSystemName -and $_.Type -eq "Permission" -and $_.Operation -eq "Grant"}
 
     # Add GroupName to evaluation since we need to match to the correct groups
     $evaluationPermissions | Add-Member -MemberType NoteProperty -Name "GroupName" -Value $null -Force
@@ -411,7 +411,7 @@ if (-not[string]::IsNullOrEmpty($evaluationReportCsv)) {
 if (-not[string]::IsNullOrEmpty($grantedEntitlementsCsv)) {
     Write-Information "Gathering data from granted entitlements export..." -InformationAction Continue
     $entitlementsReport = Import-Csv -Path $grantedEntitlementsCsv -Delimiter "," -Encoding UTF8
-    $entitlementsGranted = $entitlementsReport | Where-Object { $_.System -eq $entitlementsSystemName -and $_.EntitlementName -Like "$entitlementsPermissionTypeName - *" }
+    $entitlementsGranted = $entitlementsReport | Where-Object { $_.System -eq $entitlementsSystemName -and $_.EntitlementName -ne "Account" -and $_.EntitlementName -ne "Account Access"}
 
     # Add GroupName to evaluation since we need to match to the correct groups
     $entitlementsGranted | Add-Member -MemberType NoteProperty -Name "GroupName" -Value $null -Force
