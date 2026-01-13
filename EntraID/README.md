@@ -123,6 +123,12 @@ There are multiple ways to authenticate to the Graph API with each has its own p
 *	It's IMPORTANT to copy the newly generated client secret, because you cannot see the value anymore after you close the page.
 *	At last we need to get the <b>Tenant ID</b>. This can be found in the Entra Portal by going to <b>Entra ID > Overview</b>.
 
+### Network Requirements
+Ensure that your environment permits outbound HTTPS (TCP port 443) to the following domains:
+
+- `https://graph.microsoft.com/*` — for all Graph API calls ([learn more](https://learn.microsoft.com/en-us/graph/overview))
+- `https://login.microsoftonline.com/<YOUR_TENANT>/*` — for authentication
+
 ### Connection settings
 The following settings are required to connect to the API.
 
