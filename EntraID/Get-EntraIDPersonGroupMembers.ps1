@@ -55,7 +55,7 @@ $grantedEntitlementsCsv = $exportPath + "Entitlements.csv"
 # The name of the system on which to check the permissions in the granted entitlements (Required when using the entitlements report)
 $entitlementsSystemName = "Microsoft Entra ID"
 # The name(s) of the permission type on which to check the permissions in the granted entitlements (Required when using the entitlements report) (Default for Entra ID is: Group Membership)
-$entitlementsPermissionTypeNames = @("Permission - Security Group", "Permission - M365 Group")
+$entitlementsPermissionTypeNames = @("Permission - Security Group", "Permission - M365 Group", "Security Group", "M365 Group")
 
 # The attribute used to correlate a person to an account
 $personCorrelationAttribute = "externalId" # or e.g. "Contact.Business.email"
