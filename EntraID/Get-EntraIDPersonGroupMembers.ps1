@@ -46,16 +46,26 @@ $exportPath = "C:\HelloID\RoleminingEntraID\"
 $evaluationReportCsv = $exportPath + "EvaluationReport.csv"
 # The name of the system on which to check the permissions in the evaluation (Required when using the evaluation report)
 $evaluationSystemName = "Microsoft Entra ID"
-# The name of the permission type on which to check the permissions in the evaluation (Required when using the entitlements report) (Default for Entra ID is: Group Membership)
-$evaluationPermissionTypeName = "Group Membership"
+
+# Configure permission type prefixes to filter which entitlements are included in role mining (excludes licenses, etc.)
+# Include both old and new prefixes if you're migrating between connector versions to capture all group memberships.
+#
+# Choose ONE configuration below based on your connector type:
+$evaluationPermissionTypeNames = @("Permission - Security Group", "Permission - M365 Group", "Security Group", "M365 Group")  # PowerShell connector (old + new)
+# $evaluationPermissionTypeNames = @("Group Membership", "")  # Built-in Azure AD connector (old prefix + new unprefixed)
 
 # Optionally, specifiy the parameters below when you want to check the groups against a granted entitlements report
 # The location of the Granted Entitlements Csv (needs to be manually exported from a HelloID Provisioning Granted Entitlements).
 $grantedEntitlementsCsv = $exportPath + "Entitlements.csv"
 # The name of the system on which to check the permissions in the granted entitlements (Required when using the entitlements report)
 $entitlementsSystemName = "Microsoft Entra ID"
-# The name(s) of the permission type on which to check the permissions in the granted entitlements (Required when using the entitlements report) (Default for Entra ID is: Group Membership)
-$entitlementsPermissionTypeNames = @("Permission - Security Group", "Permission - M365 Group", "Security Group", "M365 Group")
+
+# Configure permission type prefixes to filter which entitlements are included in role mining (excludes licenses, etc.)
+# Include both old and new prefixes if you're migrating between connector versions to capture all group memberships.
+#
+# Choose ONE configuration below based on your connector type:
+$entitlementsPermissionTypeNames = @("Permission - Security Group", "Permission - M365 Group", "Security Group", "M365 Group")  # PowerShell connector (old + new)
+# $entitlementsPermissionTypeNames = @("Group Membership", "")  # Built-in Azure AD connector (old prefix + new unprefixed)
 
 # The attribute used to correlate a person to an account
 $personCorrelationAttribute = "externalId" # or e.g. "Contact.Business.email"
@@ -863,13 +873,23 @@ $personPermissions = New-Object System.Collections.ArrayList
 if (-not[string]::IsNullOrEmpty($evaluationReportCsv)) {
     Write-Information "Gathering data from evaluation report export..." -InformationAction Continue
     $evaluationReport = Import-Csv -Path $evaluationReportCsv -Delimiter "," -Encoding UTF8
-    $evaluationPermissions = $evaluationReport | Where-Object { $_.System -eq $evaluationSystemName -and $_.Type -eq "Permission" -and $_.Operation -eq "Grant" -and $_.EntitlementName -Like "$evaluationPermissionTypeName - *" }
+    $evaluationPermissions = $evaluationReport | Where-Object { 
+        $entryName = $_.EntitlementName
+        $_.System -eq $evaluationSystemName -and 
+        $_.Type -eq "Permission" -and 
+        $_.Operation -eq "Grant" -and 
+        @($evaluationPermissionTypeNames | Where-Object { $entryName -Like "$_ - *" })
+    }
 
     # Add GroupName to evaluation since we need to match to the correct groups
     $evaluationPermissions | Add-Member -MemberType NoteProperty -Name "GroupName" -Value $null -Force
     $evaluationPermissions | ForEach-Object {
-        # Replace the permission type name so the name matches the actual group in Target system
-        $_.GroupName = $_.EntitlementName -replace "$evaluationPermissionTypeName - "
+        foreach ($evaluationPermissionTypeName in $evaluationPermissionTypeNames) {
+            if ($_.EntitlementName -like "$evaluationPermissionTypeName - *") {
+                # Replace the permission type name so the name matches the actual group in Target system
+                $_.GroupName = $_.EntitlementName -replace "$evaluationPermissionTypeName - "
+            }
+        }
     }
 
     # Transform Evaluation Report into persons with entitlements
@@ -881,7 +901,11 @@ if (-not[string]::IsNullOrEmpty($evaluationReportCsv)) {
 if (-not[string]::IsNullOrEmpty($grantedEntitlementsCsv)) {
     Write-Information "Gathering data from granted entitlements export..." -InformationAction Continue
     $entitlementsReport = Import-Csv -Path $grantedEntitlementsCsv -Delimiter "," -Encoding UTF8
-    $entitlementsGranted = $entitlementsReport | Where-Object { $_.System -eq $entitlementsSystemName -and $_.EntitlementName -Like "Permission - *" }
+    $entitlementsGranted = $entitlementsReport | Where-Object { 
+        $entryName = $_.EntitlementName
+        $_.System -eq $entitlementsSystemName -and 
+        @($entitlementsPermissionTypeNames | Where-Object { $entryName -Like "$_ - *" })
+    }
  
     # Add GroupName to evaluation since we need to match to the correct groups
     $entitlementsGranted | Add-Member -MemberType NoteProperty -Name "GroupName" -Value $null -Force
