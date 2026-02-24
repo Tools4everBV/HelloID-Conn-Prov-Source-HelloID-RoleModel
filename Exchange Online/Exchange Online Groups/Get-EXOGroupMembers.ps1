@@ -41,15 +41,15 @@ $exportPath = "C:\HelloID\RoleminingExchangeOnline\"
 $evaluationReportCsv = $exportPath + "EvaluationReport.csv"
 # The name of the system on which to check the permissions in the evaluation (Required when using the evaluation report)
 $evaluationSystemName = "Exchange Online"
-# The name of the permission type on which to check the permissions in the evaluation (Required when using the entitlements report) (Default for Entra ID is: Group Membership)
-$evaluationPermissionTypeName = "Group Membership"
+# The name of the permission type on which to check the permissions in the evaluation (Required when using the evaluation report)
+$evaluationPermissionTypeNames = @("Permission - Mail-enabled Security Group", "Permission - Distribution Group", "Mail-enabled Security Group", "Distribution Group")
 
 # Optionally, specifiy the parameters below when you want to check the groups against a granted entitlements report
 # The location of the Granted Entitlements Csv (needs to be manually exported from a HelloID Provisioning Granted Entitlements).
 $grantedEntitlementsCsv = $exportPath + "Entitlements.csv"
 # The name of the system on which to check the permissions in the granted entitlements (Required when using the entitlements report)
 $entitlementsSystemName = "Exchange Online"
-# The name(s) of the permission type on which to check the permissions in the granted entitlements (Required when using the entitlements report) (Default for Entra ID is: Group Membership)
+# The name(s) of the permission type on which to check the permissions in the granted entitlements (Required when using the entitlements report)
 $entitlementsPermissionTypeNames = @("Permission - Mail-enabled Security Group", "Permission - Distribution Group", "Mail-enabled Security Group", "Distribution Group")
 
 # The attribute used to correlate a person to an account
@@ -741,7 +741,7 @@ if ($IncludeNestedGroupMemberships -eq $true) {
             }
         }
 
-        Write-Information "Gathered group memberships for each group. Result count: $(($UsersWithMemberships | Measure-Object).Count)" -InformationAction Continue
+        Write-Information "Gathered group memberships for each group. Result count: $(($GroupsWithMemberships | Measure-Object).Count)" -InformationAction Continue
     }
     catch {
         Write-Error $_.Exception
@@ -833,7 +833,7 @@ try {
                                 IsNested        = $true
                                 "Member/Parent" = $groupMember.ParentGroupName
                             }
-    
+                            
                             # Add the custom object for user with group membership to list of all users with their group memberships
                             [void]$UsersWithMemberships.Add($UserCustomObject)
                         }
@@ -857,13 +857,23 @@ $personPermissions = New-Object System.Collections.ArrayList
 if (-not[string]::IsNullOrEmpty($evaluationReportCsv)) {
     Write-Information "Gathering data from evaluation report export..." -InformationAction Continue
     $evaluationReport = Import-Csv -Path $evaluationReportCsv -Delimiter "," -Encoding UTF8
-    $evaluationPermissions = $evaluationReport | Where-Object { $_.System -eq $evaluationSystemName -and $_.Type -eq "Permission" -and $_.Operation -eq "Grant" -and $_.EntitlementName -Like "$evaluationPermissionTypeName - *" }
+    $evaluationPermissions = $evaluationReport | Where-Object { 
+        $entryName = $_.EntitlementName
+        $_.System -eq $evaluationSystemName -and 
+        $_.Type -eq "Permission" -and 
+        $_.Operation -eq "Grant" -and 
+        @($evaluationPermissionTypeNames | Where-Object { $entryName -Like "$_ - *" })
+    }
 
     # Add GroupName to evaluation since we need to match to the correct groups
     $evaluationPermissions | Add-Member -MemberType NoteProperty -Name "GroupName" -Value $null -Force
     $evaluationPermissions | ForEach-Object {
-        # Replace the permission type name so the name matches the actual group in Target system
-        $_.GroupName = $_.EntitlementName -replace "$evaluationPermissionTypeName - "
+        foreach ($evaluationPermissionTypeName in $evaluationPermissionTypeNames) {
+            if ($_.EntitlementName -like "$evaluationPermissionTypeName - *") {
+                # Replace the permission type name so the name matches the actual group in Target system
+                $_.GroupName = $_.EntitlementName -replace "$evaluationPermissionTypeName - "
+            }
+        }
     }
 
     # Transform Evaluation Report into persons with entitlements
@@ -875,7 +885,11 @@ if (-not[string]::IsNullOrEmpty($evaluationReportCsv)) {
 if (-not[string]::IsNullOrEmpty($grantedEntitlementsCsv)) {
     Write-Information "Gathering data from granted entitlements export..." -InformationAction Continue
     $entitlementsReport = Import-Csv -Path $grantedEntitlementsCsv -Delimiter "," -Encoding UTF8
-    $entitlementsGranted = $entitlementsReport | Where-Object { $_.System -eq $entitlementsSystemName -and $_.EntitlementName -Like "Permission - *" }
+    $entitlementsGranted = $entitlementsReport | Where-Object { 
+        $entryName = $_.EntitlementName
+        $_.System -eq $entitlementsSystemName -and 
+        @($entitlementsPermissionTypeNames | Where-Object { $entryName -Like "$_ - *" })
+    }
  
     # Add GroupName to evaluation since we need to match to the correct groups
     $entitlementsGranted | Add-Member -MemberType NoteProperty -Name "GroupName" -Value $null -Force
