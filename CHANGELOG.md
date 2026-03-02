@@ -1,6 +1,14 @@
 # Change Log
 All notable changes to this project will be documented in this file. The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## [1.4.1] - 2026-03-02
+
+### Fixed
+- Fixed permission type filtering to support multiple permission type prefixes in role mining scripts
+- Updated `evaluationPermissionTypeNames` and `entitlementsPermissionTypeNames` from single string to array-based configuration
+- Improved filtering logic to correctly match permissions and entitlements across different connector types (PowerShell connector vs. built-in Azure AD connector)
+- Fixed variable reference in Exchange Online Groups script for nested group membership reporting
+
 ## [1.4.0] - 2025-10-27
 
 ### Added
