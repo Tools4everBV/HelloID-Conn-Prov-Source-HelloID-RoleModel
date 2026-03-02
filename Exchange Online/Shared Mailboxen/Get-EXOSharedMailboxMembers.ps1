@@ -48,8 +48,8 @@ $evaluationReportCsv = $exportPath + "EvaluationReport.csv"
 # Note: in HelloID Provisioning we mainly use the system name "Exchange Online Permissions", but this can differ.
 # Change this accordingly to your HelloID Provisioning configuration
 $evaluationSystemName = "Exchange Online Permissions"
-# The name of the permission type on which to check the permissions in the evaluation (Required when using the entitlements report) (Default for Exchange Online is: Permission)
-$evaluationPermissionTypeName = "Permission"
+# The name(s) of the permission type on which to check the permissions in the evaluation (Required when using the evaluation report)
+$evaluationPermissionTypeNames = @("Permission - Shared Mailbox", "Shared Mailbox")
 
 # The names of the permissions that the HelloID Provisions target systems grants
 # Note: in HelloID Provisioning we mainly grant the Full Access & Send As within a single permission, but this can differ.
@@ -63,8 +63,8 @@ $grantedEntitlementsCsv = $exportPath + "Entitlements.csv"
 # Note: in HelloID Provisioning we mainly use the system name "Exchange Online Permissions", but this can differ.
 # Change this accordingly to your HelloID Provisioning configuration
 $entitlementsSystemName = "Exchange Online"  
-# The name of the permission type on which to check the permissions in the granted entitlements (Required when using the entitlements report) (Default for Exchange Online is: Permission)
-$entitlementsPermissionTypeName = "Permission - Shared Mailbox"
+# The name(s) of the permission type on which to check the permissions in the granted entitlements (Required when using the entitlements report)
+$entitlementsPermissionTypeNames =@("Permission - Shared Mailbox", "Shared Mailbox")
 
 ## The attribute used to correlate a person to an account
 $personCorrelationAttribute = "externalId" # or e.g. "Contact.Business.Email"
@@ -928,27 +928,25 @@ $personPermissions = New-Object System.Collections.ArrayList
 if (-not[string]::IsNullOrEmpty($evaluationReportCsv)) {
     Write-Information "Gathering data from evaluation report export..." -InformationAction Continue
     $evaluationReport = Import-Csv -Path $evaluationReportCsv -Delimiter "," -Encoding UTF8
-    $evaluationPermissions = $evaluationReport | Where-Object { $_.System -eq $evaluationSystemName -and $_.Type -eq "Permission" -and $_.Operation -eq "Grant" -and $_.EntitlementName -Like "$evaluationPermissionTypeName - *" }
+    $evaluationPermissions = $evaluationReport | Where-Object { 
+        $entryName = $_.EntitlementName
+        $_.System -eq $evaluationSystemName -and 
+        $_.Type -eq "Permission" -and 
+        $_.Operation -eq "Grant" -and 
+        @($evaluationPermissionTypeNames | Where-Object { $entryName -Like "$_ - *" })
+    }
 
     # Add GroupName to evaluation since we need to match to the correct groups
     $evaluationPermissions | Add-Member -MemberType NoteProperty -Name "GroupName" -Value $null -Force
     $evaluationPermissions | ForEach-Object {
-        # Replace the permission type name so the name matches the actual group in Target system
-        If ($_.EntitlementName -like "*Shared Mailbox*") {
-            $_.GroupName = $_.EntitlementName -replace "$evaluationPermissionTypeName - Shared Mailbox - "
+        foreach ($evaluationPermissionTypeName in $evaluationPermissionTypeNames) {
+            if ($_.EntitlementName -like "$evaluationPermissionTypeName - *") {
+                # Replace the permission type name so the name matches the actual group in Target system
+                $_.GroupName = $_.EntitlementName -replace "$evaluationPermissionTypeName - "
+            }
         }
-        elseif ($_.EntitlementName -like "*Distribution Group*") {
-            $_.GroupName = $_.EntitlementName -replace "$evaluationPermissionTypeName - Distribution Group - "
-        }
-        elseif ($_.EntitlementName -like "*Mail-enabled Security Group*") {
-            $_.GroupName = $_.EntitlementName -replace "$evaluationPermissionTypeName - Mail-enabled Security Group - "
-        }
-        else {
-            $_.GroupName = $_.EntitlementName -replace "$evaluationPermissionTypeName - "
-        }
-        
     }
-
+    
     # Transform Evaluation Report into persons with entitlements
     $evaluatedPersonsWithEntitlement = $null
     $evaluatedPersonsWithEntitlement = $evaluationPermissions | Group-Object "Person" -AsHashTable
@@ -958,26 +956,21 @@ if (-not[string]::IsNullOrEmpty($evaluationReportCsv)) {
 if (-not[string]::IsNullOrEmpty($grantedEntitlementsCsv)) {
     Write-Information "Gathering data from granted entitlements export..." -InformationAction Continue
     $entitlementsReport = Import-Csv -Path $grantedEntitlementsCsv -Delimiter "," -Encoding UTF8
-    $entitlementsGranted = $entitlementsReport | Where-Object { $_.System -eq $entitlementsSystemName -and $_.EntitlementName -Like "$entitlementsPermissionTypeName - *" }
+    $entitlementsGranted = $entitlementsReport | Where-Object { 
+        $entryName = $_.EntitlementName
+        $_.System -eq $entitlementsSystemName -and 
+        @($entitlementsPermissionTypeNames | Where-Object { $entryName -Like "$_ - *" })
+    }
 
-    # Add GroupName to entitlements since we need to match to the correct groups
+    # Add GroupName to evaluation since we need to match to the correct groups
     $entitlementsGranted | Add-Member -MemberType NoteProperty -Name "GroupName" -Value $null -Force
     $entitlementsGranted | ForEach-Object {
-        # Replace the permission type name so the name matches the actual group in Target system
-        # If ($_.EntitlementName -like "*Shared Mailbox*") {
-        #     $_.GroupName = $_.EntitlementName -replace "$entitlementsPermissionTypeName - Shared Mailbox - "
-        # }
-        # elseif ($_.EntitlementName -like "*Distribution Group*") {
-        #     $_.GroupName = $_.EntitlementName -replace "$entitlementsPermissionTypeName - Distribution Group - "
-        # }
-        # elseif ($_.EntitlementName -like "*Mail-enabled Security Group*") {
-        #     $_.GroupName = $_.EntitlementName -replace "$evaluationPermissionTypeName - Mail-enabled Security Group - "
-        # }
-        # else {
-        #     $_.GroupName = $_.EntitlementName -replace "$entitlementsPermissionTypeName - "
-        # }
-
-        $_.GroupName = $_.EntitlementName -replace "$entitlementsPermissionTypeName - "
+        foreach ($entitlementsPermissionTypeName in $entitlementsPermissionTypeNames) {
+            if ($_.EntitlementName -like "$entitlementsPermissionTypeName - *") {
+                # Replace the permission type name so the name matches the actual group in Target system
+                $_.GroupName = $_.EntitlementName -replace "$entitlementsPermissionTypeName - "
+            }
+        }
     }
 
     # Transform Entitlements Report into persons with entitlements
